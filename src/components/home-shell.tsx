@@ -1,14 +1,21 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { AnimatePresence, useReducedMotion } from "framer-motion";
 
 import { useMode, type SiteMode } from "@/components/providers";
 import { Navbar } from "@/components/classic/navbar";
 import { Hero } from "@/components/classic/hero";
 import { Footer } from "@/components/classic/footer";
-import { Desktop } from "@/components/desktop/desktop";
 import { BootScreen } from "@/components/desktop/boot-screen";
+
+// Loaded on demand so classic-mode visitors never download the desktop
+// (window manager, games, canvas apps). The boot overlay covers the fetch.
+const Desktop = dynamic(
+  () => import("@/components/desktop/desktop").then((m) => m.Desktop),
+  { ssr: false }
+);
 
 /**
  * The homepage switchboard. `mode` is the user's chosen experience;

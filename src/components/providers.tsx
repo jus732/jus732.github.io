@@ -3,6 +3,8 @@
 import * as React from "react";
 import { ThemeProvider } from "next-themes";
 
+import { APP_SIZES } from "@/components/desktop/app-meta";
+
 /** The two site experiences. See `HomeShell` for how the switch is staged. */
 export type SiteMode = "classic" | "desktop";
 
@@ -25,9 +27,21 @@ function ModeProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = React.useState(false);
 
   React.useEffect(() => {
-    const stored = window.localStorage.getItem(MODE_STORAGE_KEY);
-    if (stored === "desktop" || stored === "classic") {
-      setModeState(stored);
+    // A desktop deep link (/?app=...) outranks the stored preference but is
+    // not persisted — following a shared link shouldn't flip the visitor's
+    // own preference. Only the homepage hosts the desktop.
+    const requested = new URLSearchParams(window.location.search).get("app");
+    if (
+      window.location.pathname === "/" &&
+      requested !== null &&
+      requested in APP_SIZES
+    ) {
+      setModeState("desktop");
+    } else {
+      const stored = window.localStorage.getItem(MODE_STORAGE_KEY);
+      if (stored === "desktop" || stored === "classic") {
+        setModeState(stored);
+      }
     }
     setHydrated(true);
   }, []);

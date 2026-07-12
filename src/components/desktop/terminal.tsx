@@ -31,6 +31,12 @@ export function TerminalApp() {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
+  // Shell-style history: Up/Down walk past commands; the in-progress draft
+  // comes back when walking forward past the newest entry.
+  const historyRef = React.useRef<string[]>([]);
+  const [histPos, setHistPos] = React.useState<number | null>(null);
+  const draftRef = React.useRef("");
+
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [lines]);
@@ -101,14 +107,37 @@ export function TerminalApp() {
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    const history = historyRef.current;
     if (event.key === "Enter") {
       run(input);
+      if (input.trim() && history[history.length - 1] !== input) {
+        history.push(input);
+      }
+      setHistPos(null);
       setInput("");
+    } else if (event.key === "ArrowUp") {
+      if (history.length === 0) return;
+      event.preventDefault();
+      if (histPos === null) draftRef.current = input;
+      const pos = histPos === null ? history.length - 1 : Math.max(0, histPos - 1);
+      setHistPos(pos);
+      setInput(history[pos]);
+    } else if (event.key === "ArrowDown") {
+      if (histPos === null) return;
+      event.preventDefault();
+      const pos = histPos + 1;
+      if (pos >= history.length) {
+        setHistPos(null);
+        setInput(draftRef.current);
+      } else {
+        setHistPos(pos);
+        setInput(history[pos]);
+      }
     }
   }
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- click-to-focus convenience; the input itself is fully accessible
+    // Click-to-focus convenience; the input itself is fully accessible.
     <div
       className="flex h-full cursor-text flex-col overflow-y-auto bg-background p-4 font-mono text-[13px] leading-relaxed"
       onClick={() => inputRef.current?.focus()}

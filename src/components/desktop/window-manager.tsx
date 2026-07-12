@@ -149,6 +149,40 @@ export function WindowManagerProvider({ children }: { children: React.ReactNode 
     );
   }, []);
 
+  // Keep windows reachable when the viewport shrinks (browser resize, device
+  // rotation). Rects are clamped on open, so this only covers live resizes;
+  // the persisted geometry is left alone. Debounced — resize fires in bursts.
+  React.useEffect(() => {
+    let timer = 0;
+    const onResize = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        setWindows((prev) => {
+          let changed = false;
+          const next = prev.map((w) => {
+            const rect = clampRect(w.rect);
+            if (
+              rect.x === w.rect.x &&
+              rect.y === w.rect.y &&
+              rect.w === w.rect.w &&
+              rect.h === w.rect.h
+            ) {
+              return w;
+            }
+            changed = true;
+            return { ...w, rect };
+          });
+          return changed ? next : prev;
+        });
+      }, 150);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", onResize);
+    };
+  }, []);
+
   const activeId = React.useMemo(() => {
     const visible = windows.filter((w) => !w.minimized);
     if (visible.length === 0) return null;

@@ -29,7 +29,7 @@ import { Window } from "@/components/desktop/window";
 import { Taskbar } from "@/components/desktop/taskbar";
 import { Wallpaper, WALLPAPERS } from "@/components/desktop/wallpaper";
 import { ContextMenuShell, MenuDivider, MenuItem } from "@/components/desktop/context-menu";
-import { TASKBAR_HEIGHT } from "@/components/desktop/app-meta";
+import { APP_SIZES, TASKBAR_HEIGHT } from "@/components/desktop/app-meta";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
@@ -50,7 +50,7 @@ type Menu =
 type Marquee = { x1: number; y1: number; x2: number; y2: number };
 
 function DesktopShell() {
-  const { windows, open } = useWindows();
+  const { windows, open, activeId } = useWindows();
   const config = useDesktopConfig();
   const desktopRef = React.useRef<HTMLDivElement>(null);
   const surfaceRef = React.useRef<HTMLDivElement>(null);
@@ -110,10 +110,35 @@ function DesktopShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.positions, config.desktopIcons, metrics.grid]);
 
-  // The Welcome window doubles as the desktop's "hero"; open it on boot.
+  // The Welcome window doubles as the desktop's "hero"; open it on boot —
+  // unless a deep link (/?app=...) asked for a specific window.
   React.useEffect(() => {
-    open("welcome");
+    const requested = new URLSearchParams(window.location.search).get("app");
+    open(
+      requested !== null && requested in APP_SIZES
+        ? (requested as AppId)
+        : "welcome"
+    );
   }, [open]);
+
+  // Mirror the focused window in the URL so any desktop view is shareable.
+  // Welcome is the default and stays unmarked. replaceState keeps focus
+  // changes out of the browser history.
+  React.useEffect(() => {
+    const url = new URL(window.location.href);
+    if (activeId && activeId !== "welcome") url.searchParams.set("app", activeId);
+    else url.searchParams.delete("app");
+    window.history.replaceState(null, "", url);
+  }, [activeId]);
+
+  // Leaving the desktop drops the deep-link param.
+  React.useEffect(() => {
+    return () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("app");
+      window.history.replaceState(null, "", url);
+    };
+  }, []);
 
   const setWallpaperPersist = React.useCallback((index: number) => {
     setWallpaper(index);
