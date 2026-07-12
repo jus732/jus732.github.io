@@ -1,0 +1,191 @@
+@import "tailwindcss";
+
+/*
+ * Dark mode is class-driven (next-themes toggles `.dark` on <html>).
+ * The site defaults to dark; light mode is the toggle.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Semantic tokens.
+ * Radius system (project-wide rule): cards + windows = rounded-xl,
+ * buttons + inputs + badges = rounded-lg. Nothing else.
+ */
+:root {
+  --background: #f7f8fa;
+  --foreground: #14171c;
+  --card: #ffffff;
+  --card-foreground: #14171c;
+  --muted: #eef0f4;
+  --muted-foreground: #57606f;
+  --border: #e2e5eb;
+  --input: #e2e5eb;
+  --accent: #145eec;
+  --accent-foreground: #ffffff;
+  --ring: #145eec;
+
+  /* Desktop-mode surfaces (glass panels over the wallpaper) */
+  --glass: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(20, 23, 28, 0.1);
+
+  /* Wallpaper palette */
+  --wall-base: #dfe4ec;
+  --wall-glow-a: rgba(20, 94, 236, 0.16);
+  --wall-glow-b: rgba(56, 189, 248, 0.14);
+  --wall-grid: rgba(20, 23, 28, 0.05);
+}
+
+.dark {
+  --background: #0a0d12;
+  --foreground: #e6e9ef;
+  --card: #10141b;
+  --card-foreground: #e6e9ef;
+  --muted: #161b24;
+  --muted-foreground: #8b94a7;
+  --border: #1f2634;
+  --input: #232b3c;
+  --accent: #4d9fff;
+  --accent-foreground: #06101c;
+  --ring: #4d9fff;
+
+  --glass: rgba(13, 17, 24, 0.72);
+  --glass-border: rgba(230, 233, 239, 0.08);
+
+  --wall-base: #070a10;
+  --wall-glow-a: rgba(77, 159, 255, 0.13);
+  --wall-glow-b: rgba(34, 211, 238, 0.08);
+  --wall-grid: rgba(230, 233, 239, 0.04);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-ring: var(--ring);
+  --color-glass: var(--glass);
+  --color-glass-border: var(--glass-border);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* Thin, theme-aware scrollbars (window content panes rely on these) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Lives in @layer base so utilities like outline-none can opt out
+   (unlayered CSS would beat layered utilities regardless of specificity). */
+@layer base {
+  :where(:focus-visible) {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/*
+ * Hero background: a slow-drifting accent glow. Decorative only, so it is
+ * fully disabled under reduced motion (the static gradient remains).
+ */
+@keyframes glow-drift {
+  0% {
+    transform: translate3d(-4%, -2%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(5%, 4%, 0) scale(1.12);
+  }
+  100% {
+    transform: translate3d(-4%, -2%, 0) scale(1);
+  }
+}
+
+/* Aurora wallpaper blobs (desktop mode) */
+@keyframes aurora-drift {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translate3d(6%, -5%, 0) rotate(12deg) scale(1.15);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+/* Boot screen progress sweep */
+@keyframes boot-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  60% {
+    transform: translateX(-18%);
+  }
+  100% {
+    transform: translateX(0%);
+  }
+}
+
+/* Terminal cursor blink */
+@keyframes cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-glow-drift {
+    animation: glow-drift 26s ease-in-out infinite;
+  }
+  .animate-aurora {
+    animation: aurora-drift 32s ease-in-out infinite;
+  }
+  .animate-aurora-slow {
+    animation: aurora-drift 44s ease-in-out infinite reverse;
+  }
+  .animate-cursor-blink {
+    animation: cursor-blink 1.1s step-end infinite;
+  }
+}
+
+.animate-boot-sweep {
+  animation: boot-sweep 1.15s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-boot-sweep {
+    animation: none;
+    transform: translateX(0%);
+  }
+}
