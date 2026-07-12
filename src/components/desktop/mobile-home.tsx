@@ -101,38 +101,36 @@ type MobileIconGridProps = {
 /**
  * iOS-style home screen: icons flow left-to-right in fixed-width columns
  * distributed evenly across the viewport, so the margins between apps and
- * screen edges stay uniform. Dragging an icon over another reorders it.
+ * screen edges stay uniform. Releasing a dragged icon commits it to the
+ * slot nearest the drop point (persisted with the desktop icon order).
  */
 export function MobileIconGrid({ metrics, onIconContextMenu }: MobileIconGridProps) {
   const { open } = useWindows();
   const config = useDesktopConfig();
   const cells = React.useRef(new Map<AppId, HTMLDivElement>());
 
-  // The configured desktop icons, plus Search: mobile has no taskbar search
-  // field, so Search surfaces as a home-screen app instead.
-  const hasSearch = config.desktopIcons.includes("search");
-  const ids = hasSearch ? config.desktopIcons : [...config.desktopIcons, "search" as AppId];
+  const ids = config.desktopIcons;
   const gridApps = ids
     .map((id) => appById(id))
     .filter((a): a is NonNullable<typeof a> => Boolean(a));
 
   function handleDrop(id: AppId, clientX: number, clientY: number) {
-    let target: AppId | null = null;
+    // Resolve the drop point to a reading-order slot index: every settled
+    // cell in a row above it counts, plus same-row cells left of it. Drops
+    // into gaps or empty grid space land on the nearest slot instead of
+    // being ignored (which would snap the icon back).
+    let index = 0;
     for (const [otherId, el] of cells.current) {
-      if (otherId === id) continue;
+      if (otherId === id) continue; // its rect carries the drag transform
       const r = el.getBoundingClientRect();
-      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
-        target = otherId;
-        break;
-      }
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const sameRow = Math.abs(cy - clientY) <= r.height / 2;
+      if (cy < clientY - r.height / 2 || (sameRow && cx < clientX)) index++;
     }
-    if (!target) return;
     const next = ids.filter((i) => i !== id);
-    next.splice(next.indexOf(target) + (ids.indexOf(id) < ids.indexOf(target) ? 1 : 0), 0, id);
-    // When Search is only implicitly present (appended above), keep it out
-    // of the persisted config so desktop viewports don't grow a Search icon;
-    // it stays pinned to the end of the mobile grid.
-    config.reorderDesktop(hasSearch ? next : next.filter((i) => i !== "search"));
+    next.splice(index, 0, id);
+    if (next.join() !== ids.join()) config.reorderDesktop(next);
   }
 
   return (
