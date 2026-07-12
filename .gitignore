@@ -27,4 +27,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
+# ide / local tooling
 .idea/
+.claude/
