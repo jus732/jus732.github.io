@@ -22,10 +22,21 @@ export const metadata: Metadata = {
     url: "/",
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: `${site.name} | ${site.role}`,
     description: site.tagline,
   },
+};
+
+/** Person schema for rich results; fed by the same source as everything else. */
+const personJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Person",
+  name: site.name,
+  jobTitle: site.role,
+  email: `mailto:${site.email}`,
+  url: site.url,
+  sameAs: [site.github, site.linkedin],
 };
 
 export const viewport: Viewport = {
@@ -47,6 +58,10 @@ export default function RootLayout({
       className={`${GeistSans.variable} ${GeistMono.variable}`}
     >
       <body className="font-sans antialiased">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(personJsonLd) }}
+        />
         <Providers>{children}</Providers>
       </body>
     </html>
