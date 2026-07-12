@@ -75,6 +75,8 @@ type DesktopConfigValue = {
   unpinFromTaskbar: (id: AppId) => void;
   /** Persist a new pin order (from taskbar drag-reorder). */
   reorderTaskbar: (pins: AppId[]) => void;
+  /** Persist a new desktop icon order (from the mobile grid drag-reorder). */
+  reorderDesktop: (ids: AppId[]) => void;
   /** null clears a custom name back to the app's default title. */
   renameApp: (id: AppId, name: string | null) => void;
   setIconSize: (size: IconSize) => void;
@@ -151,6 +153,7 @@ export function DesktopConfigProvider({ children }: { children: React.ReactNode 
         setTaskbarPins((prev) => (prev.includes(id) ? prev : [...prev, id])),
       unpinFromTaskbar: (id) => setTaskbarPins((prev) => prev.filter((x) => x !== id)),
       reorderTaskbar: (pins) => setTaskbarPins(pins),
+      reorderDesktop: (ids) => setDesktopIcons(ids),
       renameApp: (id, name) =>
         setNames((prev) => {
           const next = { ...prev };

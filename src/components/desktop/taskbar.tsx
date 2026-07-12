@@ -181,7 +181,7 @@ function StartTile({
           <div
             aria-hidden
             style={{ left: ghost.x, top: ghost.y }}
-            className="pointer-events-none fixed z-[80] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 opacity-80"
+            className="pointer-events-none fixed z-80 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 opacity-80"
           >
             <span className="flex size-10 items-center justify-center rounded-xl border border-accent/50 bg-card shadow-2xl">
               <app.icon className="size-4.5 text-accent" strokeWidth={1.6} />
@@ -204,11 +204,15 @@ function StartMenu({
   const { open } = useWindows();
   const { labelFor } = useDesktopConfig();
 
+  // The taskbar's live search field already covers desktop viewports; the
+  // Search app only surfaces on mobile, where that field doesn't exist.
+  const startApps = apps.filter((app) => app.id !== "search");
+
   return (
     <TaskbarPopup onClose={onClose} className="left-2 w-80">
       <p className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">All apps</p>
       <div className="grid grid-cols-4 gap-0.5 p-1">
-        {apps.map((app) => (
+        {startApps.map((app) => (
           <StartTile
             key={app.id}
             app={app}
@@ -239,10 +243,13 @@ function SearchField() {
   const [query, setQuery] = React.useState("");
 
   const q = query.trim().toLowerCase();
+  // The Search app is redundant next to this field; keep it out of results.
   const results = q
     ? apps
-        .filter((app) =>
-          `${labelFor(app.id)} ${app.title} ${app.blurb}`.toLowerCase().includes(q)
+        .filter(
+          (app) =>
+            app.id !== "search" &&
+            `${labelFor(app.id)} ${app.title} ${app.blurb}`.toLowerCase().includes(q)
         )
         .slice(0, 8)
     : [];
@@ -269,7 +276,7 @@ function SearchField() {
 
       <AnimatePresence>
         {q && (
-          <TaskbarPopup onClose={() => setQuery("")} className="left-0 bottom-[52px] w-72">
+          <TaskbarPopup onClose={() => setQuery("")} className="left-0 bottom-13 w-72">
             {results.length === 0 ? (
               <p className="px-3 py-2 text-sm text-muted-foreground">
                 No apps match “{query.trim()}”.
@@ -304,12 +311,15 @@ function SearchField() {
 
 /* ----- Preferences (taskbar config) ----- */
 
-function PreferencesMenu({
-  onClose,
+/**
+ * Preferences content: theme, wallpaper, classic-mode switch, and social
+ * links. Rendered in a taskbar popup on desktop and inside the full-screen
+ * settings view on mobile.
+ */
+export function PreferencesPanel({
   wallpaper,
   onWallpaperChange,
 }: {
-  onClose: () => void;
   wallpaper: number;
   onWallpaperChange: (index: number) => void;
 }) {
@@ -320,7 +330,7 @@ function PreferencesMenu({
     "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-muted";
 
   return (
-    <TaskbarPopup onClose={onClose} className="right-2 max-h-[75vh] w-64 overflow-y-auto">
+    <>
       <p className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">Theme</p>
       <div className="flex gap-1 px-1">
         <button
@@ -395,6 +405,22 @@ function PreferencesMenu({
           <LinkedinIcon />
         </a>
       </div>
+    </>
+  );
+}
+
+function PreferencesMenu({
+  onClose,
+  wallpaper,
+  onWallpaperChange,
+}: {
+  onClose: () => void;
+  wallpaper: number;
+  onWallpaperChange: (index: number) => void;
+}) {
+  return (
+    <TaskbarPopup onClose={onClose} className="right-2 max-h-[75vh] w-64 overflow-y-auto">
+      <PreferencesPanel wallpaper={wallpaper} onWallpaperChange={onWallpaperChange} />
     </TaskbarPopup>
   );
 }

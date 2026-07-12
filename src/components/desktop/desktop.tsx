@@ -25,6 +25,7 @@ import {
   type IconSize,
 } from "@/components/desktop/desktop-config";
 import { DesktopIcon, type IconMetrics } from "@/components/desktop/desktop-icon";
+import { MobileDock, MobileIconGrid } from "@/components/desktop/mobile-home";
 import { Window } from "@/components/desktop/window";
 import { Taskbar } from "@/components/desktop/taskbar";
 import { Wallpaper, WALLPAPERS } from "@/components/desktop/wallpaper";
@@ -402,29 +403,13 @@ function DesktopShell() {
         >
           {!config.iconsHidden &&
             (isMobile ? (
-              <div className="flex flex-row flex-wrap content-start gap-1 p-3">
-                {desktopApps.map((app) => (
-                  <DesktopIcon
-                    key={app.id}
-                    app={app}
-                    label={config.labelFor(app.id)}
-                    metrics={metrics}
-                    selected={selected.has(app.id)}
-                    renaming={false}
-                    onRenameCommit={() => {}}
-                    onRenameCancel={() => {}}
-                    onSelect={() => setSelected(new Set([app.id]))}
-                    onOpen={() => {
-                      setSelected(new Set());
-                      open(app.id);
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setMenu({ kind: "icon", x: e.clientX, y: e.clientY, appId: app.id });
-                    }}
-                  />
-                ))}
-              </div>
+              <MobileIconGrid
+                metrics={metrics}
+                onIconContextMenu={(e, appId) => {
+                  e.preventDefault();
+                  setMenu({ kind: "icon", x: e.clientX, y: e.clientY, appId });
+                }}
+              />
             ) : (
               desktopApps.map((app) => (
                 <DesktopIcon
@@ -487,11 +472,15 @@ function DesktopShell() {
         </AnimatePresence>
       </div>
 
-      <Taskbar
-        wallpaper={wallpaper}
-        onWallpaperChange={setWallpaperPersist}
-        onStartDrop={handleStartDrop}
-      />
+      {isMobile ? (
+        <MobileDock wallpaper={wallpaper} onWallpaperChange={setWallpaperPersist} />
+      ) : (
+        <Taskbar
+          wallpaper={wallpaper}
+          onWallpaperChange={setWallpaperPersist}
+          onStartDrop={handleStartDrop}
+        />
+      )}
 
       <AnimatePresence>
         {menu?.kind === "desktop" && (
@@ -562,15 +551,18 @@ function DesktopShell() {
             >
               Open
             </MenuItem>
-            <MenuItem
-              icon={Pencil}
-              onClick={() => {
-                setMenu(null);
-                setRenamingId(menu.appId);
-              }}
-            >
-              Rename
-            </MenuItem>
+            {/* Renaming happens inline on the icon; mobile icons have no input. */}
+            {!isMobile && (
+              <MenuItem
+                icon={Pencil}
+                onClick={() => {
+                  setMenu(null);
+                  setRenamingId(menu.appId);
+                }}
+              >
+                Rename
+              </MenuItem>
+            )}
             <MenuDivider />
             <MenuItem
               icon={Trash2}
