@@ -9,6 +9,7 @@ import {
   Gamepad2,
   Mail,
   NotebookPen,
+  Radar,
   Search,
   Sparkles,
   SquareTerminal,
@@ -26,6 +27,7 @@ import { CalculatorApp } from "@/components/desktop/calculator-app";
 import { NotepadApp } from "@/components/desktop/notepad-app";
 import { PaintApp } from "@/components/desktop/paint-app";
 import { TetrisApp } from "@/components/desktop/tetris/tetris-app";
+import { GwarsApp } from "@/components/desktop/gwars/gwars-app";
 
 export type { AppId } from "@/components/desktop/app-meta";
 
@@ -157,6 +159,17 @@ export const apps: DesktopApp[] = [
     livePreview: false,
     padded: false,
     content: TetrisApp,
+  },
+  {
+    id: "gwars",
+    title: "G-Wars",
+    blurb: "Neon twin-stick arena shooter with a roguelike loop.",
+    icon: Radar,
+    kind: "utility",
+    size: APP_SIZES.gwars,
+    livePreview: false,
+    padded: false,
+    content: GwarsApp,
   },
 ];
 

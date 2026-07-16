@@ -151,7 +151,7 @@ export function WindowManagerProvider({ children }: { children: React.ReactNode 
 
   // Keep windows reachable when the viewport shrinks (browser resize, device
   // rotation). Rects are clamped on open, so this only covers live resizes;
-  // the persisted geometry is left alone. Debounced — resize fires in bursts.
+  // the persisted geometry is left alone. Debounced - resize fires in bursts.
   React.useEffect(() => {
     let timer = 0;
     const onResize = () => {

@@ -20,16 +20,13 @@ const ModeContext = React.createContext<ModeContextValue | null>(null);
 const MODE_STORAGE_KEY = "portfolio-mode";
 
 function ModeProvider({ children }: { children: React.ReactNode }) {
-  // Server renders classic; the stored preference is applied after mount so
-  // SSR output stays deterministic. HomeShell turns the swap into a boot
-  // animation rather than a flash.
+  // Server renders classic; the stored preference is applied after mount so SSR output stays deterministic
+  // HomeShell turns the swap into a boot animation
   const [mode, setModeState] = React.useState<SiteMode>("classic");
   const [hydrated, setHydrated] = React.useState(false);
 
   React.useEffect(() => {
-    // A desktop deep link (/?app=...) outranks the stored preference but is
-    // not persisted — following a shared link shouldn't flip the visitor's
-    // own preference. Only the homepage hosts the desktop.
+    // following a shared link shouldn't flip the visitor's own preference; only the homepage hosts the desktop
     const requested = new URLSearchParams(window.location.search).get("app");
     if (
       window.location.pathname === "/" &&

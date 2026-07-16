@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 
 import { site } from "@/lib/site";
-import { GithubIcon, LinkedinIcon } from "@/components/icons/brand";
+import { GithubIcon, LinkedinIcon } from "@/components/ui/icons/brand";
 import { apps, appById, type AppId } from "@/components/desktop/apps";
 import { WALLPAPERS } from "@/components/desktop/wallpaper";
 import { useWindows } from "@/components/desktop/window-manager";

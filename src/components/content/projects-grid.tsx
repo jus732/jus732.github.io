@@ -3,11 +3,11 @@
 import Image from "next/image";
 import { ArrowUpRight } from "lucide-react";
 
-import { GithubIcon } from "@/components/icons/brand";
+import { GithubIcon } from "@/components/ui/icons/brand";
 
 import { projects, type Project } from "@/lib/site";
 import { Badge } from "@/components/ui/badge";
-import { Reveal } from "@/components/motion/reveal";
+import { Reveal } from "@/components/ui/motion/reveal";
 import { cn } from "@/lib/utils";
 
 function ProjectCard({ project, featured }: { project: Project; featured?: boolean }) {

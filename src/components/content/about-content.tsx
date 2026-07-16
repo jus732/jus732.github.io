@@ -1,7 +1,7 @@
 "use client";
 
 import { skills, bio, philosophy, site } from "@/lib/site";
-import { Reveal } from "@/components/motion/reveal";
+import { Reveal } from "@/components/ui/motion/reveal";
 
 /**
  * About section shared by the classic /about page and the desktop About

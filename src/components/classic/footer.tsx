@@ -1,7 +1,7 @@
 import { Mail } from "lucide-react";
 
 import { site } from "@/lib/site";
-import { GithubIcon, LinkedinIcon } from "@/components/icons/brand";
+import { GithubIcon, LinkedinIcon } from "@/components/ui/icons/brand";
 
 /** Minimal footer for classic mode. */
 export function Footer() {

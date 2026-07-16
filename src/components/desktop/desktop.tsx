@@ -111,7 +111,7 @@ function DesktopShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.positions, config.desktopIcons, metrics.grid]);
 
-  // The Welcome window doubles as the desktop's "hero"; open it on boot —
+  // The Welcome window doubles as the desktop's "hero"; open it on boot -
   // unless a deep link (/?app=...) asked for a specific window.
   React.useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("app");
@@ -581,7 +581,6 @@ function DesktopShell() {
   );
 }
 
-/** The Windows-style desktop experience that replaces the classic homepage. */
 export function Desktop() {
   return (
     <WindowManagerProvider>

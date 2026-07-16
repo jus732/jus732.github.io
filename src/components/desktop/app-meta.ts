@@ -14,7 +14,8 @@ export type AppId =
   | "calculator"
   | "notepad"
   | "paint"
-  | "tetris";
+  | "tetris"
+  | "gwars";
 
 /** Sections are portfolio content (desktop icons + start menu "routes");
  *  utilities are the small taskbar apps. */
@@ -33,6 +34,7 @@ export const APP_SIZES: Record<AppId, { w: number; h: number }> = {
   notepad: { w: 660, h: 500 },
   paint: { w: 820, h: 600 },
   tetris: { w: 620, h: 720 },
+  gwars: { w: 900, h: 680 },
 };
 
 export const MIN_WINDOW = { w: 320, h: 240 };

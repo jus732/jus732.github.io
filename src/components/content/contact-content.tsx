@@ -3,13 +3,13 @@
 import * as React from "react";
 import { Mail, Send, CheckCircle2 } from "lucide-react";
 
-import { GithubIcon, LinkedinIcon } from "@/components/icons/brand";
+import { GithubIcon, LinkedinIcon } from "@/components/ui/icons/brand";
 
 import { site } from "@/lib/site";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Reveal } from "@/components/motion/reveal";
+import { Reveal } from "@/components/ui/motion/reveal";
 
 const channels = [
   {
