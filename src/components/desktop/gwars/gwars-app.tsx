@@ -9,7 +9,7 @@
 
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Lock, Pause, Play, RotateCcw, Volume2, VolumeX } from "lucide-react";
+import { Bomb, Lock, Pause, Play, RotateCcw, Volume2, VolumeX } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useWindows } from "@/components/desktop/window/window-manager";
@@ -46,6 +46,7 @@ import {
   type MetaUpgradeId,
 } from "@/components/desktop/gwars/meta";
 import { SHIPS, SHIP_ORDER, type ShipId } from "@/components/desktop/gwars/weapons";
+import { VirtualStick } from "@/components/desktop/touch/virtual-stick";
 
 type Phase = "title" | "playing" | "reward" | "paused" | "over";
 
@@ -73,6 +74,9 @@ const AIM_KEYS: Record<string, [number, number]> = {
 };
 
 const EASY_LIVES_OPTIONS = [3, 5, 0] as const; // 0 renders as ∞
+
+/** Right-stick deflection below this aims nothing and holds fire. */
+const TOUCH_AIM_DEADZONE = 0.25;
 
 const RARITY_RANK: Record<Rarity, number> = {
   common: 0,
@@ -150,6 +154,10 @@ export function GwarsApp() {
     firing: false,
   });
   const mouseRef = React.useRef({ x: 0, y: 0, held: false });
+  const touchRef = React.useRef({
+    move: { x: 0, y: 0, active: false },
+    aim: { x: 0, y: 0, active: false },
+  });
   const sizeRef = React.useRef({ w: 900, h: 640, dpr: 1 });
   const frameRef = React.useRef<RenderFrame>({ w: 900, h: 640, now: 0, shakeX: 0, shakeY: 0 });
   const shakeRef = React.useRef({ mag: 0, until: 0 });
@@ -368,6 +376,21 @@ export function GwarsApp() {
           input.aim.y = ay;
           input.firing = ax !== 0 || ay !== 0;
 
+          // Virtual sticks override held keys while engaged; mouse still wins.
+          const touch = touchRef.current;
+          if (touch.move.active) {
+            input.move.x = touch.move.x;
+            input.move.y = touch.move.y;
+          }
+          if (touch.aim.active) {
+            const mag = Math.hypot(touch.aim.x, touch.aim.y);
+            if (mag > TOUCH_AIM_DEADZONE) {
+              input.aim.x = touch.aim.x / mag;
+              input.aim.y = touch.aim.y / mag;
+              input.firing = true;
+            }
+          }
+
           // Held mouse button wins over arrow keys: aim from ship to cursor.
           const mouse = mouseRef.current;
           if (mouse.held) {
@@ -412,6 +435,8 @@ export function GwarsApp() {
     engineRef.current = new GwarsEngine(w, h, buildRunConfig(metaRef.current));
     keysRef.current.clear();
     mouseRef.current.held = false;
+    touchRef.current.move = { x: 0, y: 0, active: false };
+    touchRef.current.aim = { x: 0, y: 0, active: false };
     shakeRef.current = { mag: 0, until: 0 };
     setChoices([]);
     setSummary(null);
@@ -566,6 +591,7 @@ export function GwarsApp() {
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType !== "mouse") return; // touch belongs to the stick zones
     if (phaseRef.current !== "playing") return;
     trackPointer(e);
     if (e.button === 0) {
@@ -701,7 +727,7 @@ export function GwarsApp() {
   const engine = engineRef.current;
 
   return (
-    <div className="relative h-full select-none overflow-hidden bg-[#04060d]">
+    <div className="relative h-full select-none overflow-hidden bg-[#04060d] @container">
       <div ref={wrapRef} className="absolute inset-0">
         <canvas
           ref={canvasRef}
@@ -727,15 +753,53 @@ export function GwarsApp() {
         />
       )}
 
-      {/* Pause button floats over the canvas while playing. */}
+      {/* Pause button floats over the canvas while playing; on touch it
+          moves to the top so the bottom corners belong to thumbs. */}
       {phase === "playing" && (
         <button
           onClick={pauseGame}
           aria-label="Pause"
-          className="absolute bottom-3 right-3 z-10 rounded-lg border border-border/60 bg-card/60 p-2 text-muted-foreground backdrop-blur-sm transition-colors hover:text-foreground"
+          className={cn(
+            "absolute z-20 rounded-lg border border-border/60 bg-card/60 p-2 text-muted-foreground backdrop-blur-sm transition-colors hover:text-foreground",
+            coarse ? "right-3 top-3" : "bottom-3 right-3"
+          )}
         >
           <Pause className="size-4" />
         </button>
+      )}
+
+      {/* Touch controls: twin sticks + bomb. */}
+      {coarse && phase === "playing" && (
+        <>
+          <VirtualStick
+            className="absolute inset-y-0 left-0 z-10 w-1/2"
+            onEngage={() => (touchRef.current.move.active = true)}
+            onVector={(x, y) => {
+              touchRef.current.move.x = x;
+              touchRef.current.move.y = y;
+            }}
+            onRelease={() => (touchRef.current.move.active = false)}
+          />
+          <VirtualStick
+            className="absolute inset-y-0 right-0 z-10 w-1/2"
+            onEngage={() => (touchRef.current.aim.active = true)}
+            onVector={(x, y) => {
+              touchRef.current.aim.x = x;
+              touchRef.current.aim.y = y;
+            }}
+            onRelease={() => (touchRef.current.aim.active = false)}
+          />
+          <button
+            aria-label="Bomb"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              engineRef.current?.requestBomb();
+            }}
+            className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-border/60 bg-card/60 p-3.5 text-muted-foreground backdrop-blur-sm active:text-foreground"
+          >
+            <Bomb className="size-5" />
+          </button>
+        </>
       )}
 
       <AnimatePresence>
@@ -824,14 +888,10 @@ export function GwarsApp() {
               </div>
 
               <p className="mt-5 font-mono text-xs text-muted-foreground">
-                WASD move · Arrows or mouse aim &amp; fire · Space / right-click bomb · Esc
-                pause
+                {coarse
+                  ? "Left stick move · Right stick aim & fire · Center button bomb"
+                  : "WASD move · Arrows or mouse aim & fire · Space / right-click bomb · Esc pause"}
               </p>
-              {coarse && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Heads up: this one needs a keyboard.
-                </p>
-              )}
             </div>
           </Overlay>
         )}
@@ -843,7 +903,7 @@ export function GwarsApp() {
                 Wave {clearedWave} clear
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">Pick one upgrade</p>
-              <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="mt-4 grid grid-cols-1 gap-2 @min-[480px]:grid-cols-3">
                 {choices.map((offer, i) => {
                   const rar = RARITY[offer.rarity];
                   const info = offerInfo(offer);
@@ -920,9 +980,11 @@ export function GwarsApp() {
                   <RotateCcw /> Reroll ({rerolls})
                 </Button>
               </div>
-              <p className="mt-2 font-mono text-xs text-muted-foreground">
-                1/2/3 pick · R reroll
-              </p>
+              {!coarse && (
+                <p className="mt-2 font-mono text-xs text-muted-foreground">
+                  1/2/3 pick · R reroll
+                </p>
+              )}
             </div>
           </Overlay>
         )}

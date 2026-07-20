@@ -844,47 +844,99 @@ export function TetrisApp() {
 
   /* ----- Touch controls (coarse pointers only) ----- */
 
-  const touchRepeat = React.useRef<number | null>(null);
+  const touchRepeats = React.useRef(new Map<ActionId, number>());
+
+  const stopTouchRepeat = (action: ActionId) => {
+    const id = touchRepeats.current.get(action);
+    if (id !== undefined) {
+      window.clearInterval(id);
+      touchRepeats.current.delete(action);
+    }
+  };
+
   const touchButton = (
     action: ActionId,
     icon: React.ReactNode,
     label: string,
     repeat = false
-  ) => (
-    <button
-      key={action}
-      aria-label={label}
-      className="flex h-11 flex-1 items-center justify-center rounded-lg border border-border bg-muted/40 text-foreground active:bg-muted"
-      onPointerDown={(e) => {
-        e.preventDefault();
-        performAction(action);
-        if (repeat) {
-          touchRepeat.current = window.setInterval(() => performAction(action), 110);
-        }
-      }}
-      onPointerUp={() => {
-        releaseAction(action);
-        if (touchRepeat.current) window.clearInterval(touchRepeat.current);
-      }}
-      onPointerLeave={() => {
-        releaseAction(action);
-        if (touchRepeat.current) window.clearInterval(touchRepeat.current);
-      }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      {icon}
-    </button>
-  );
+  ) => {
+    const end = () => {
+      releaseAction(action);
+      stopTouchRepeat(action);
+    };
+    return (
+      <button
+        key={action}
+        aria-label={label}
+        className="flex h-14 flex-1 items-center justify-center rounded-xl border border-border bg-muted/40 text-foreground active:bg-muted"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          performAction(action);
+          if (repeat) {
+            stopTouchRepeat(action);
+            touchRepeats.current.set(
+              action,
+              window.setInterval(() => performAction(action), 110)
+            );
+          }
+        }}
+        onPointerUp={end}
+        onPointerLeave={end}
+        onPointerCancel={end}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        {icon}
+      </button>
+    );
+  };
 
   const keyHint = (action: ActionId) => prettyKey(controls[action]);
 
   const wordmarkColors: PieceType[] = ["T", "S", "I", "Z", "J", "L"];
 
   return (
-    <div className="relative flex h-full select-none flex-col">
-      <div className="flex min-h-0 flex-1 gap-4 p-4">
+    <div className="relative flex h-full select-none flex-col @container">
+      {/* Compact HUD: replaces the side panels in narrow windows. */}
+      <div className="flex items-center gap-2 border-b border-border px-2 py-1.5 @min-[600px]:hidden">
+        <div
+          className="rounded-lg border border-border bg-muted/30 px-1"
+          aria-label="Held piece"
+        >
+          <PiecePreview type={hold} theme={theme} dimmed={!canHold} />
+        </div>
+        <div className="flex items-center" aria-label="Next pieces">
+          {(nextQ.length ? nextQ.slice(0, 2) : [null, null]).map((type, i) => (
+            <PiecePreview key={i} type={type} theme={theme} dimmed={i > 0} />
+          ))}
+        </div>
+        <div className="ml-auto text-right font-mono">
+          <p className="text-sm font-semibold leading-tight tabular-nums">
+            {hud.score.toLocaleString()}
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            Lv {hud.level} · Ln {hud.lines}
+          </p>
+        </div>
+        <div className="flex gap-0.5">
+          {phase === "playing" && (
+            <Button variant="ghost" size="sm" aria-label="Pause" onClick={pauseGame}>
+              <Pause />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Tetris options"
+            onClick={() => openPanel("settings")}
+          >
+            <Settings2 />
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 gap-4 p-2 @min-[600px]:p-4">
         {/* Side panel */}
-        <aside className="flex w-40 shrink-0 flex-col gap-3 text-center">
+        <aside className="hidden w-40 shrink-0 flex-col gap-3 text-center @min-[600px]:flex">
           <div className="rounded-xl border border-border bg-muted/30 p-3">
             <p className="mb-2 flex items-baseline justify-between text-sm font-medium text-muted-foreground">
               Hold
@@ -921,7 +973,7 @@ export function TetrisApp() {
         </div>
 
         {/* Side panel */}
-        <aside className="flex w-40 shrink-0 flex-col gap-3 mr-6">
+        <aside className="hidden w-40 shrink-0 flex-col gap-3 mr-6 @min-[600px]:flex">
 
           <div className="rounded-xl border border-border bg-muted/30 p-3">
             <p className="mb-2 text-sm font-medium text-muted-foreground text-center">Next</p>
@@ -962,15 +1014,19 @@ export function TetrisApp() {
         </aside>
       </div>
 
-      {/* Touch controls */}
+      {/* Touch controls: movement cluster left, action cluster right. */}
       {coarse && (
-        <div className="flex gap-1.5 border-t border-border p-2">
-          {touchButton("moveLeft", <ArrowLeft className="size-5" />, "Move left", true)}
-          {touchButton("moveRight", <ArrowRight className="size-5" />, "Move right", true)}
-          {touchButton("rotateCW", <RotateCw className="size-5" />, "Rotate")}
-          {touchButton("softDrop", <ArrowDown className="size-5" />, "Soft drop", true)}
-          {touchButton("hardDrop", <ArrowDownToLine className="size-5" />, "Hard drop")}
-          {touchButton("hold", <Repeat2 className="size-5" />, "Hold piece")}
+        <div className="flex items-center gap-4 border-t border-border px-3 py-2 pb-3">
+          <div className="flex flex-1 gap-1.5">
+            {touchButton("moveLeft", <ArrowLeft className="size-6" />, "Move left", true)}
+            {touchButton("softDrop", <ArrowDown className="size-6" />, "Soft drop", true)}
+            {touchButton("moveRight", <ArrowRight className="size-6" />, "Move right", true)}
+          </div>
+          <div className="flex flex-1 gap-1.5">
+            {touchButton("hold", <Repeat2 className="size-6" />, "Hold piece")}
+            {touchButton("hardDrop", <ArrowDownToLine className="size-6" />, "Hard drop")}
+            {touchButton("rotateCW", <RotateCw className="size-6" />, "Rotate")}
+          </div>
         </div>
       )}
 
@@ -1007,10 +1063,12 @@ export function TetrisApp() {
                   </Button>
                 </div>
               </div>
-              <p className="mt-6 font-mono text-xs text-muted-foreground">
-                {keyHint("moveLeft")} {keyHint("moveRight")} move · {keyHint("rotateCW")} rotate ·{" "}
-                {keyHint("hardDrop")} drop · {keyHint("hold")} hold
-              </p>
+              {!coarse && (
+                <p className="mt-6 font-mono text-xs text-muted-foreground">
+                  {keyHint("moveLeft")} {keyHint("moveRight")} move · {keyHint("rotateCW")}{" "}
+                  rotate · {keyHint("hardDrop")} drop · {keyHint("hold")} hold
+                </p>
+              )}
             </div>
           </Overlay>
         )}
