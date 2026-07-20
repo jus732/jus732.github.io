@@ -11,7 +11,7 @@ import {
   Play,
   Repeat2,
   RotateCw,
-  RotateCcw,
+  // RotateCcw,
   Settings2,
   Trophy,
   Volume2,
@@ -214,37 +214,43 @@ function PiecePreview({
   type,
   theme,
   dimmed = false,
+  unit = 20,
+  className,
 }: {
   type: PieceType | null;
   theme: Theme;
   dimmed?: boolean;
+  unit?: number;
+  className?: string;
 }) {
-  const unit = 18;
+  const grid = type ? PREVIEW_CELLS[type] : null;
   return (
     <div
-      className={cn("relative h-7.5 w-14 transition-opacity", dimmed && "opacity-35")}
+      className={cn(
+        "flex items-center justify-center transition-opacity",
+        dimmed && "opacity-35",
+        className
+      )}
       aria-hidden
     >
-      {type &&
-        PREVIEW_CELLS[type].cells.map(([x, y], i) => {
-          const { w, h } = PREVIEW_CELLS[type];
-          const offX = (56 - w * unit) / 2;
-          const offY = (30 - h * unit) / 2;
-          return (
+      {type && grid && (
+        <div className="relative" style={{ width: grid.w * unit, height: grid.h * unit }}>
+          {grid.cells.map(([x, y], i) => (
             <span
               key={i}
               className="absolute rounded-[3px]"
               style={{
                 width: unit - 2,
                 height: unit - 2,
-                left: offX + x * unit,
-                top: offY + y * unit,
+                left: x * unit + 1,
+                top: y * unit + 1,
                 backgroundColor: theme.pieces[type],
                 boxShadow: "inset 0 1.5px 0 rgba(255,255,255,0.3)",
               }}
             />
-          );
-        })}
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -902,11 +908,11 @@ export function TetrisApp() {
           className="rounded-lg border border-border bg-muted/30 px-1"
           aria-label="Held piece"
         >
-          <PiecePreview type={hold} theme={theme} dimmed={!canHold} />
+          <PiecePreview type={hold} theme={theme} dimmed={!canHold} unit={14} className="h-7.5 w-14" />
         </div>
         <div className="flex items-center" aria-label="Next pieces">
           {(nextQ.length ? nextQ.slice(0, 2) : [null, null]).map((type, i) => (
-            <PiecePreview key={i} type={type} theme={theme} dimmed={i > 0} />
+            <PiecePreview key={i} type={type} theme={theme} dimmed={i > 0} unit={14} className="h-7.5 w-14" />
           ))}
         </div>
         <div className="ml-auto text-right font-mono">
@@ -936,26 +942,41 @@ export function TetrisApp() {
 
       <div className="flex min-h-0 flex-1 gap-4 p-2 @min-[600px]:p-4">
         {/* Side panel */}
-        <aside className="hidden w-40 shrink-0 flex-col gap-3 text-center @min-[600px]:flex">
+        <aside className="hidden w-40 shrink-0 flex-col gap-3 @min-[600px]:flex">
           <div className="rounded-xl border border-border bg-muted/30 p-3">
-            <p className="mb-2 flex items-baseline justify-between text-sm font-medium text-muted-foreground">
+            <p className="flex items-baseline justify-between text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
               Hold
-              <kbd className="font-mono text-[10px] opacity-70">{keyHint("hold")}</kbd>
+              <kbd className="font-mono text-[10px] normal-case tracking-normal opacity-70">
+                {keyHint("hold")}
+              </kbd>
             </p>
-            <PiecePreview type={hold} theme={theme} dimmed={!canHold} />
+            <PiecePreview
+              type={hold}
+              theme={theme}
+              dimmed={!canHold}
+              className="mt-2 h-12 w-full"
+            />
           </div>
           <div className="mt-auto rounded-xl border border-border bg-muted/30 p-3 font-mono">
-            <p className="text-sm text-muted-foreground">Score</p>
-            <p className="text-2xl font-semibold tabular-nums tracking-tight m-3 mb-4">
+            <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+              Score
+            </p>
+            <p className="mt-2 text-center text-2xl font-semibold tabular-nums tracking-tight">
               {hud.score.toLocaleString()}
             </p>
-            <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-              <span>
-                Level <span className="text-foreground mr-3">{hud.level}</span>
-              </span>
-              <span>
-                Lines <span className="text-foreground">{hud.lines}</span>
-              </span>
+            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border/60 pt-2 text-center">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Level
+                </p>
+                <p className="mt-0.5 text-sm font-semibold tabular-nums">{hud.level}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Lines
+                </p>
+                <p className="mt-0.5 text-sm font-semibold tabular-nums">{hud.lines}</p>
+              </div>
             </div>
           </div>
         </aside>
@@ -973,13 +994,20 @@ export function TetrisApp() {
         </div>
 
         {/* Side panel */}
-        <aside className="hidden w-40 shrink-0 flex-col gap-3 mr-6 @min-[600px]:flex">
-
+        <aside className="hidden w-40 shrink-0 flex-col gap-3 @min-[600px]:flex">
           <div className="rounded-xl border border-border bg-muted/30 p-3">
-            <p className="mb-2 text-sm font-medium text-muted-foreground text-center">Next</p>
-            <div className="space-y-4 pl-10 mt-3">
+            <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+              Next
+            </p>
+            <div className="mt-2 flex flex-col gap-2">
               {(nextQ.length ? nextQ : [null, null, null]).map((type, i) => (
-                <PiecePreview key={i} type={type} theme={theme} dimmed={i > 0} />
+                <PiecePreview
+                  key={i}
+                  type={type}
+                  theme={theme}
+                  dimmed={i > 0}
+                  className="h-12 w-full"
+                />
               ))}
             </div>
           </div>
