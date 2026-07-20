@@ -149,6 +149,7 @@ export function GwarsApp() {
     aim: { x: 0, y: 0 },
     firing: false,
   });
+  const mouseRef = React.useRef({ x: 0, y: 0, held: false });
   const sizeRef = React.useRef({ w: 900, h: 640, dpr: 1 });
   const frameRef = React.useRef<RenderFrame>({ w: 900, h: 640, now: 0, shakeX: 0, shakeY: 0 });
   const shakeRef = React.useRef({ mag: 0, until: 0 });
@@ -366,6 +367,19 @@ export function GwarsApp() {
           input.aim.x = ax;
           input.aim.y = ay;
           input.firing = ax !== 0 || ay !== 0;
+
+          // Held mouse button wins over arrow keys: aim from ship to cursor.
+          const mouse = mouseRef.current;
+          if (mouse.held) {
+            const dx = mouse.x - engine.player.x;
+            const dy = mouse.y - engine.player.y;
+            const len = Math.hypot(dx, dy);
+            if (len > 1) {
+              input.aim.x = dx / len;
+              input.aim.y = dy / len;
+            }
+            input.firing = true;
+          }
           engine.setInput(input);
 
           // The player drags a subtle well through the grid.
@@ -397,6 +411,7 @@ export function GwarsApp() {
     const { w, h } = sizeRef.current;
     engineRef.current = new GwarsEngine(w, h, buildRunConfig(metaRef.current));
     keysRef.current.clear();
+    mouseRef.current.held = false;
     shakeRef.current = { mag: 0, until: 0 };
     setChoices([]);
     setSummary(null);
@@ -408,6 +423,7 @@ export function GwarsApp() {
 
   const pauseGame = React.useCallback(() => {
     keysRef.current.clear();
+    mouseRef.current.held = false;
     setPhase((p) => (p === "playing" ? "paused" : p));
   }, []);
 
@@ -536,6 +552,34 @@ export function GwarsApp() {
     };
   }, [pauseGame, pickUpgrade, rerollCards, resumeGame, startRun]);
 
+  /* Mouse: hold LMB to aim & fire at the cursor; right-click bombs.
+     Coordinates map through the bounding rect so they stay correct while
+     the window is scale-animated or rendered as a preview. */
+
+  const trackPointer = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const { w, h } = sizeRef.current;
+    const mouse = mouseRef.current;
+    mouse.x = ((e.clientX - rect.left) * w) / rect.width;
+    mouse.y = ((e.clientY - rect.top) * h) / rect.height;
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (phaseRef.current !== "playing") return;
+    trackPointer(e);
+    if (e.button === 0) {
+      mouseRef.current.held = true;
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } else if (e.button === 2) {
+      engineRef.current?.requestBomb();
+    }
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.button === 0) mouseRef.current.held = false;
+  };
+
   /* ----- Canvas sizing (world adapts to the window) ----- */
 
   React.useEffect(() => {
@@ -659,7 +703,15 @@ export function GwarsApp() {
   return (
     <div className="relative h-full select-none overflow-hidden bg-[#04060d]">
       <div ref={wrapRef} className="absolute inset-0">
-        <canvas ref={canvasRef} className="block" onContextMenu={(e) => e.preventDefault()} />
+        <canvas
+          ref={canvasRef}
+          className="block"
+          onContextMenu={(e) => e.preventDefault()}
+          onPointerDown={onPointerDown}
+          onPointerMove={trackPointer}
+          onPointerUp={onPointerUp}
+          onPointerCancel={() => (mouseRef.current.held = false)}
+        />
       </div>
 
       {/* Rarity-colored screen flash when a reward card is taken. */}
@@ -772,7 +824,8 @@ export function GwarsApp() {
               </div>
 
               <p className="mt-5 font-mono text-xs text-muted-foreground">
-                WASD move · Arrows aim &amp; fire · Space bomb · Esc pause
+                WASD move · Arrows or mouse aim &amp; fire · Space / right-click bomb · Esc
+                pause
               </p>
               {coarse && (
                 <p className="mt-2 text-xs text-muted-foreground">
