@@ -13,7 +13,7 @@ import { Copy, Minus, Square, X } from "lucide-react";
 
 import type { DesktopApp } from "@/components/desktop/apps";
 import { MIN_WINDOW, TASKBAR_HEIGHT, type Rect } from "@/components/desktop/app-meta";
-import { useWindows, type WindowState } from "@/components/desktop/window-manager";
+import { useWindows, type WindowState } from "@/components/desktop/window/window-manager";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 

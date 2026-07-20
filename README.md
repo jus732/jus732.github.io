@@ -2,8 +2,8 @@
 
 This is my personal website, which I plan to fill with various little projects over time.
 
-A dual-mode portfolio site built on TypeScript using Next.js 15 (App Router), Tailwind CSS 4, and Framer Motion, with assistance from my local AI setup (Qwen 3.6 35B-A3B through llama.cpp, Hermes, OpenCode) as well as Claude for more complex debugging issues.
-I built the general architecture of the system and had AI handle optimization and styling.
+A dual-mode portfolio site built on TypeScript using Next.js 15 (App Router), Tailwind CSS 4, and Framer Motion, with assistance from my local AI setup (Qwen 3.6 35B-A3B served by llama.cpp, with optimized configs for Hermes + OpenCode) and Claude for more complex debugging issues.
+
 
 
 ## Modes
@@ -22,8 +22,8 @@ Toggle between them via the "Desktop mode" button in the nav (or "Classic" in th
 - Tailwind CSS 4 (CSS-first config in `src/app/globals.css`)
 - Framer Motion, Lucide icons, next-themes (dark by default), shadcn-style UI primitives in `src/components/ui`
 - SEO baked in: `robots.ts`, `sitemap.ts`, a build-time Open Graph image, and JSON-LD Person schema - all generated from `src/lib/site.ts`
-- Deployed to Vercel
 - Simple CI/CD (GitHub Actions) runs lint, typecheck, and build
+- Deployed to Vercel
 
 
 ## Structure
@@ -37,7 +37,7 @@ src/
   components/
     classic/      navbar, hero, footer, page chrome
     content/      section content shared by both modes
-    desktop/      window manager, windows, taskbar, icons, wallpaper
+    desktop/      window manager, windows, taskbar, icons, backgrounds
     ui/           button, card, badge, input, textarea
   lib/site.ts     all placeholder content in one place
 ```

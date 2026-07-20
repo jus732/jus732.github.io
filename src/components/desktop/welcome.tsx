@@ -4,7 +4,7 @@ import { ArrowRight, Grip, MousePointerClick, Move, PanelBottom } from "lucide-r
 
 import { site } from "@/lib/site";
 import { Button } from "@/components/ui/button";
-import { useWindows } from "@/components/desktop/window-manager";
+import { useWindows } from "@/components/desktop/window/window-manager";
 
 const tips = [
   { icon: MousePointerClick, text: "Double-click a desktop icon to open it." },

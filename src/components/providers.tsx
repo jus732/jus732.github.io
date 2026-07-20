@@ -62,14 +62,41 @@ export function useMode() {
   return ctx;
 }
 
+/**
+ * Cross-fades light/dark switches. Watching the class attribute (rather than
+ * wrapping setTheme) covers every toggle site — navbar, taskbar, terminal —
+ * and skips the initial load for free, since next-themes sets the class
+ * before this observer attaches. The `.theme-fade` transition rules live in
+ * globals.css; reduced motion keeps the instant swap.
+ */
+function ThemeFade() {
+  React.useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const root = document.documentElement;
+    let wasDark = root.classList.contains("dark");
+    let timer: number | undefined;
+    const observer = new MutationObserver(() => {
+      const isDark = root.classList.contains("dark");
+      if (isDark === wasDark) return;
+      wasDark = isDark;
+      root.classList.add("theme-fade");
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => root.classList.remove("theme-fade"), 350);
+    });
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timer);
+      root.classList.remove("theme-fade");
+    };
+  }, []);
+  return null;
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="dark"
-      enableSystem={false}
-      disableTransitionOnChange
-    >
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={true}>
+      <ThemeFade />
       <ModeProvider>{children}</ModeProvider>
     </ThemeProvider>
   );

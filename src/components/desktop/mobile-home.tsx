@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, Settings } from "lucide-react";
 
 import { apps, appById, type AppId, type DesktopApp } from "@/components/desktop/apps";
-import { useWindows } from "@/components/desktop/window-manager";
+import { useWindows } from "@/components/desktop/window/window-manager";
 import { useDesktopConfig } from "@/components/desktop/desktop-config";
 import type { IconMetrics } from "@/components/desktop/desktop-icon";
 import { PreferencesPanel } from "@/components/desktop/taskbar";
@@ -135,6 +135,9 @@ export function MobileIconGrid({ metrics, onIconContextMenu }: MobileIconGridPro
 
   return (
     <div
+      // Marked as desktop surface so taps on empty grid space reach the
+      // wallpaper's click-ripple handler (it fills the actual surface div).
+      data-desktop-surface
       className="grid h-full content-start justify-evenly gap-y-2 overflow-y-auto px-1 py-4"
       style={{ gridTemplateColumns: `repeat(auto-fill, ${metrics.w}px)` }}
     >

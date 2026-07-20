@@ -23,7 +23,7 @@ import { site } from "@/lib/site";
 import { GithubIcon, LinkedinIcon } from "@/components/ui/icons/brand";
 import { apps, appById, type AppId } from "@/components/desktop/apps";
 import { WALLPAPERS } from "@/components/desktop/wallpaper";
-import { useWindows } from "@/components/desktop/window-manager";
+import { useWindows } from "@/components/desktop/window/window-manager";
 import { useDesktopConfig } from "@/components/desktop/desktop-config";
 import { ContextMenuShell, MenuDivider, MenuItem } from "@/components/desktop/context-menu";
 import { useMode } from "@/components/providers";

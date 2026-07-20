@@ -21,11 +21,11 @@ import { ProjectsGrid } from "@/components/content/projects-grid";
 import { AboutContent } from "@/components/content/about-content";
 import { ContactContent } from "@/components/content/contact-content";
 import { WelcomeApp } from "@/components/desktop/welcome";
-import { TerminalApp } from "@/components/desktop/terminal";
-import { SearchApp } from "@/components/desktop/search-app";
-import { CalculatorApp } from "@/components/desktop/calculator-app";
-import { NotepadApp } from "@/components/desktop/notepad-app";
-import { PaintApp } from "@/components/desktop/paint-app";
+import { TerminalApp } from "@/components/desktop/apps/terminal";
+import { SearchApp } from "@/components/desktop/apps/search-app";
+import { CalculatorApp } from "@/components/desktop/apps/calculator-app";
+import { NotepadApp } from "@/components/desktop/apps/notepad-app";
+import { PaintApp } from "@/components/desktop/apps/paint-app";
 import { TetrisApp } from "@/components/desktop/tetris/tetris-app";
 import { GwarsApp } from "@/components/desktop/gwars/gwars-app";
 

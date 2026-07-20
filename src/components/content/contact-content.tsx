@@ -34,7 +34,12 @@ const channels = [
 
 type FormStatus = "idle" | "sending" | "sent";
 
-function ContactForm() {
+/**
+ * Placeholder message form, exported so the classic /contact page can give
+ * it a window of its own. Uses @lg container queries, so hosts must provide
+ * an @container ancestor.
+ */
+export function ContactForm() {
   const [status, setStatus] = React.useState<FormStatus>("idle");
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -53,7 +58,7 @@ function ContactForm() {
     return (
       <div
         role="status"
-        className="flex h-full min-h-72 flex-col items-center justify-center gap-3 rounded-xl border border-border bg-card p-8 text-center"
+        className="surface-raised flex h-full min-h-72 flex-col items-center justify-center gap-3 rounded-xl border border-border bg-card p-8 text-center"
       >
         <CheckCircle2 className="size-8 text-accent" />
         <p className="font-medium">Message noted.</p>
@@ -71,7 +76,7 @@ function ContactForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-4 rounded-xl border border-border bg-card p-6"
+      className="surface-raised space-y-4 rounded-xl border border-border bg-card p-6"
     >
       <div className="grid grid-cols-1 gap-4 @lg:grid-cols-2">
         <div className="flex flex-col gap-2">
@@ -112,36 +117,43 @@ function ContactForm() {
   );
 }
 
+/** Channel list (email / GitHub / LinkedIn) with hover affordances. */
+export function ContactInfo() {
+  return (
+    <Reveal>
+      <div className="space-y-6">
+        <ul className="space-y-1">
+          {channels.map((channel) => (
+            <li key={channel.label}>
+              <a
+                href={channel.href}
+                target={channel.href.startsWith("mailto:") ? undefined : "_blank"}
+                rel="noreferrer"
+                className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-[background-color,transform] duration-200 hover:bg-muted motion-safe:hover:translate-x-0.5"
+              >
+                <channel.icon className="size-4 text-muted-foreground transition-colors group-hover:text-accent" />
+                <span className="text-sm font-medium">{channel.label}</span>
+                <span className="ml-auto font-mono text-xs text-muted-foreground">
+                  {channel.value}
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Reveal>
+  );
+}
+
 /**
- * Contact section shared by the classic /contact page and the desktop
- * Contact window.
+ * Combined contact layout for the desktop Contact window: channel list and
+ * message form side by side.
  */
 export function ContactContent() {
   return (
     <div className="@container">
       <div className="grid grid-cols-1 gap-10 @3xl:grid-cols-[2fr_3fr] @3xl:gap-14">
-        <Reveal>
-          <div className="space-y-6">
-            <ul className="space-y-1">
-              {channels.map((channel) => (
-                <li key={channel.label}>
-                  <a
-                    href={channel.href}
-                    target={channel.href.startsWith("mailto:") ? undefined : "_blank"}
-                    rel="noreferrer"
-                    className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted"
-                  >
-                    <channel.icon className="size-4 text-muted-foreground transition-colors group-hover:text-accent" />
-                    <span className="text-sm font-medium">{channel.label}</span>
-                    <span className="ml-auto font-mono text-xs text-muted-foreground">
-                      {channel.value}
-                    </span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Reveal>
+        <ContactInfo />
 
         <Reveal delay={0.08}>
           <ContactForm />

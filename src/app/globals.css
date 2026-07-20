@@ -10,51 +10,75 @@
  * Semantic tokens.
  * Radius system (project-wide rule): cards + windows = rounded-xl,
  * buttons + inputs + badges = rounded-lg. Nothing else.
+ *
+ * Palette discipline: exactly four hues, each used as light/dark tints.
+ *   1. eggshell #f0ead6 (light surfaces / dark-mode text)
+ *   2. soft charcoal    (dark surfaces / light-mode text)
+ *   3. warm neutral     (borders, dividers, muted text)
+ *   4. accent blue      (#0a86e8; light mode dips its lightness to
+ *      #0a65af — same ~207° hue — so accent text stays AA on eggshell,
+ *      where #0a6dbd would land just under 4.5:1)
+ * No pure #fff / #000 anywhere; shadows are translucent charcoal.
  */
 :root {
-  --background: #f7f8fa;
-  --foreground: #14171c;
-  --card: #ffffff;
-  --card-foreground: #14171c;
-  --muted: #eef0f4;
-  --muted-foreground: #57606f;
-  --border: #e2e5eb;
-  --input: #e2e5eb;
-  --accent: #145eec;
-  --accent-foreground: #ffffff;
-  --ring: #145eec;
+  --background: #f0ead6;
+  --foreground: #2c2820;
+  --card: #f6f2e3;
+  --card-foreground: #2c2820;
+  --muted: #e6dfc9;
+  --muted-foreground: #6a6250;
+  --border: #d6ceb9;
+  --input: #d6ceb9;
+  --accent: #0a65af;
+  --accent-foreground: #f7f3e4;
+  --ring: #0a65af;
+
+  /* Raised-surface treatment (cards): top sheen + layered shadow */
+  --surface-top: #f9f6ea;
+  --surface-sheen: rgba(249, 246, 234, 0.9);
+  --surface-shadow:
+    0 1px 2px rgba(44, 40, 32, 0.04),
+    0 8px 24px -12px rgba(44, 40, 32, 0.14);
+  --surface-shadow-hover:
+    0 2px 4px rgba(44, 40, 32, 0.05),
+    0 18px 36px -14px rgba(44, 40, 32, 0.2);
 
   /* Desktop-mode surfaces (glass panels over the wallpaper) */
-  --glass: rgba(255, 255, 255, 0.78);
-  --glass-border: rgba(20, 23, 28, 0.1);
+  --glass: rgba(246, 242, 227, 0.78);
+  --glass-border: rgba(44, 40, 32, 0.1);
 
   /* Wallpaper palette */
-  --wall-base: #dfe4ec;
-  --wall-glow-a: rgba(20, 94, 236, 0.16);
-  --wall-glow-b: rgba(56, 189, 248, 0.14);
-  --wall-grid: rgba(20, 23, 28, 0.05);
+  --wall-base: #e6dfc7;
+  --wall-grid: rgba(44, 40, 32, 0.05);
 }
 
 .dark {
-  --background: #0a0d12;
-  --foreground: #e6e9ef;
-  --card: #10141b;
-  --card-foreground: #e6e9ef;
-  --muted: #161b24;
-  --muted-foreground: #8b94a7;
-  --border: #1f2634;
-  --input: #232b3c;
-  --accent: #4d9fff;
-  --accent-foreground: #06101c;
-  --ring: #4d9fff;
+  --background: #151413;
+  --foreground: #edeae4;
+  --card: #1c1b19;
+  --card-foreground: #edeae4;
+  --muted: #232120;
+  --muted-foreground: #a09d97;
+  --border: #302e2b;
+  --input: #383633;
+  --accent: #0a86e8;
+  --accent-foreground: #151413;
+  --ring: #0a86e8;
 
-  --glass: rgba(13, 17, 24, 0.72);
-  --glass-border: rgba(230, 233, 239, 0.08);
+  --surface-top: #201f1d;
+  --surface-sheen: rgba(237, 234, 228, 0.07);
+  --surface-shadow:
+    0 1px 2px rgba(10, 9, 8, 0.4),
+    0 12px 28px -12px rgba(10, 9, 8, 0.55);
+  --surface-shadow-hover:
+    0 2px 4px rgba(10, 9, 8, 0.45),
+    0 20px 40px -14px rgba(10, 9, 8, 0.65);
 
-  --wall-base: #070a10;
-  --wall-glow-a: rgba(77, 159, 255, 0.13);
-  --wall-glow-b: rgba(34, 211, 238, 0.08);
-  --wall-grid: rgba(230, 233, 239, 0.04);
+  --glass: rgba(21, 20, 19, 0.72);
+  --glass-border: rgba(237, 234, 228, 0.08);
+
+  --wall-base: #111010;
+  --wall-grid: rgba(237, 234, 228, 0.045);
 }
 
 @theme inline {
@@ -108,31 +132,53 @@ body {
 }
 
 /*
+ * Raised surfaces (classic-mode cards/sections): a hairline top highlight,
+ * a faint top-lit gradient and a soft layered shadow lift panels off the
+ * page without competing with the geometry. `surface-interactive` adds the
+ * hover response (lift + deeper shadow + accent-tinted border).
+ * In @layer components so Tailwind utilities on the same element still win.
+ */
+@layer components {
+  .surface-raised {
+    background-image: linear-gradient(180deg, var(--surface-top) 0%, var(--card) 58%);
+    box-shadow: inset 0 1px 0 var(--surface-sheen), var(--surface-shadow);
+  }
+
+  .surface-interactive {
+    transition:
+      box-shadow 0.3s ease,
+      border-color 0.3s ease,
+      transform 0.3s ease;
+  }
+  .surface-interactive:hover {
+    box-shadow: inset 0 1px 0 var(--surface-sheen), var(--surface-shadow-hover);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surface-interactive:hover {
+    transform: none;
+  }
+}
+
+/*
  * Hero background: a slow-drifting accent glow. Decorative only, so it is
  * fully disabled under reduced motion (the static gradient remains).
  */
 @keyframes glow-drift {
   0% {
-    transform: translate3d(-4%, -2%, 0) scale(1);
+    transform: translate3d(-18%, -10%, 0) scale(0.88);
   }
-  50% {
-    transform: translate3d(5%, 4%, 0) scale(1.12);
+  33% {
+    transform: translate3d(12%, 6%, 0) scale(1.16);
   }
-  100% {
-    transform: translate3d(-4%, -2%, 0) scale(1);
-  }
-}
-
-/* Aurora wallpaper blobs (desktop mode) */
-@keyframes aurora-drift {
-  0% {
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-  }
-  50% {
-    transform: translate3d(6%, -5%, 0) rotate(12deg) scale(1.15);
+  66% {
+    transform: translate3d(-6%, 18%, 0) scale(1.28);
   }
   100% {
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+    transform: translate3d(-18%, -10%, 0) scale(0.88);
   }
 }
 
@@ -163,13 +209,7 @@ body {
 
 @media (prefers-reduced-motion: no-preference) {
   .animate-glow-drift {
-    animation: glow-drift 26s ease-in-out infinite;
-  }
-  .animate-aurora {
-    animation: aurora-drift 32s ease-in-out infinite;
-  }
-  .animate-aurora-slow {
-    animation: aurora-drift 44s ease-in-out infinite reverse;
+    animation: glow-drift 18s ease-in-out infinite;
   }
   .animate-cursor-blink {
     animation: cursor-blink 1.1s step-end infinite;
@@ -188,4 +228,24 @@ body {
     animation: none;
     transform: translateX(0%);
   }
+}
+
+/*
+ * Theme cross-fade: Providers tags <html> with .theme-fade for ~350ms around
+ * a light/dark flip so token-driven colors ease instead of snapping. The
+ * class is never present on initial load and never added under reduced
+ * motion (both enforced in ThemeFade). !important so it briefly overrides
+ * per-component transitions and everything moves in lockstep.
+ */
+html.theme-fade,
+html.theme-fade *,
+html.theme-fade *::before,
+html.theme-fade *::after {
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    color 0.3s ease,
+    fill 0.3s ease,
+    stroke 0.3s ease,
+    box-shadow 0.3s ease !important;
 }

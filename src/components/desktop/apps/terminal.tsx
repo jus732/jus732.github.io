@@ -5,7 +5,7 @@ import { useTheme } from "next-themes";
 
 import { site, projects, skills } from "@/lib/site";
 import { useMode } from "@/components/providers";
-import { useWindows } from "@/components/desktop/window-manager";
+import { useWindows } from "@/components/desktop/window/window-manager";
 
 type Line = { kind: "cmd" | "out"; text: string };
 

@@ -19,6 +19,7 @@
     "lucide-react": "^1.24.0",
     "next": "^15.5.20",
     "next-themes": "^0.4.6",
+    "playwright-core": "^1.61.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwind-merge": "^3.6.0"
@@ -34,5 +35,22 @@
     "tailwindcss": "^4.3.2",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
-  }
+  },
+  "description": "This is my personal website, which I plan to fill with various little projects over time.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jus732/jus732.github.io.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/jus732/jus732.github.io/issues"
+  },
+  "homepage": "https://github.com/jus732/jus732.github.io#readme"
 }

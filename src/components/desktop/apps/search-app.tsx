@@ -4,7 +4,7 @@ import * as React from "react";
 import { SearchX } from "lucide-react";
 
 import { apps } from "@/components/desktop/apps";
-import { useWindows } from "@/components/desktop/window-manager";
+import { useWindows } from "@/components/desktop/window/window-manager";
 import { Input } from "@/components/ui/input";
 
 /**

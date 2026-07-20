@@ -13,7 +13,7 @@ const APP_NAMES_KEY = "portfolio-app-names";
 const DESKTOP_PREFS_KEY = "portfolio-desktop-prefs";
 const ICON_POSITIONS_KEY = "portfolio-icon-positions";
 
-const DEFAULT_TASKBAR_PINS: AppId[] = ["calculator", "notepad", "paint", "tetris"];
+const DEFAULT_TASKBAR_PINS: AppId[] = ["calculator", "notepad", "paint"];
 
 type DesktopPrefs = { iconSize: IconSize; iconsHidden: boolean; gridLock: boolean };
 const DEFAULT_PREFS: DesktopPrefs = {

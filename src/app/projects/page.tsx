@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { SiteChrome, PageHeader } from "@/components/classic/site-chrome";
+import { FrameSection } from "@/components/classic/page-frame";
 import { ProjectsGrid } from "@/components/content/projects-grid";
 
 export const metadata: Metadata = {
@@ -18,15 +19,17 @@ export const metadata: Metadata = {
 export default function ProjectsPage() {
   return (
     <SiteChrome>
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
-        <PageHeader
-          title="Projects"
-          lede="A few things I have designed, built, and kept running in production. Every card links to a live demo and the source."
-        />
-        <div className="mt-12">
-          <ProjectsGrid />
+      <FrameSection>
+        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+          <PageHeader
+            title="Projects"
+            lede="A few things I have designed, built, and kept running in production. Every card links to a live demo and the source."
+          />
+          <div className="mt-12">
+            <ProjectsGrid />
+          </div>
         </div>
-      </section>
+      </FrameSection>
     </SiteChrome>
   );
 }

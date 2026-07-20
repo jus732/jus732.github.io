@@ -14,7 +14,7 @@ function ProjectCard({ project, featured }: { project: Project; featured?: boole
   return (
     <article
       className={cn(
-        "group flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card transition-all duration-300 hover:-translate-y-0.5 hover:border-accent/50",
+        "surface-raised surface-interactive group flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card",
         featured && "@3xl:flex-row"
       )}
     >

@@ -18,7 +18,7 @@ import { appById, type AppId } from "@/components/desktop/apps";
 import {
   WindowManagerProvider,
   useWindows,
-} from "@/components/desktop/window-manager";
+} from "@/components/desktop/window/window-manager";
 import {
   DesktopConfigProvider,
   useDesktopConfig,
@@ -26,7 +26,7 @@ import {
 } from "@/components/desktop/desktop-config";
 import { DesktopIcon, type IconMetrics } from "@/components/desktop/desktop-icon";
 import { MobileDock, MobileIconGrid } from "@/components/desktop/mobile-home";
-import { Window } from "@/components/desktop/window";
+import { Window } from "@/components/desktop/window/window";
 import { Taskbar } from "@/components/desktop/taskbar";
 import { Wallpaper, WALLPAPERS } from "@/components/desktop/wallpaper";
 import { ContextMenuShell, MenuDivider, MenuItem } from "@/components/desktop/context-menu";
