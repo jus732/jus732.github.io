@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { mulberry32, UPGRADES, type UpgradeId } from "./engine";
+import { mulberry32, UPGRADES, type UpgradeId } from "../engine";
 import {
   COMBOS,
   PITY_THRESHOLD,
@@ -21,7 +21,7 @@ import {
   type OfferContext,
   type UniqueId,
   type UpgradeOffer,
-} from "./rarity";
+} from "../rarity";
 
 function freshMods(overrides: Partial<Record<UpgradeId, number>> = {}) {
   const mods: Record<UpgradeId, number> = {
@@ -34,6 +34,9 @@ function freshMods(overrides: Partial<Record<UpgradeId, number>> = {}) {
     pickup: 0,
     speed: 0,
     damage: 0,
+    ricochet: 0,
+    crit: 0,
+    bulletSpeed: 0,
   };
   return { ...mods, ...overrides };
 }

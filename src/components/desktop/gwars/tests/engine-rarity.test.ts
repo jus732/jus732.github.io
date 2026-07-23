@@ -6,9 +6,23 @@
 
 import { describe, expect, it } from "vitest";
 
-import { GwarsEngine, UPGRADES } from "./engine";
-import { defaultMeta, buildRunConfig } from "./meta";
-import type { UpgradeOffer } from "./rarity";
+import { GwarsEngine, UPGRADES } from "../engine";
+import { defaultMeta, buildRunConfig } from "../meta";
+import {
+  availableCombos,
+  defaultComboEffects,
+  COMBOS,
+  type UpgradeId,
+  type UpgradeOffer,
+} from "../rarity";
+
+/** A zeroed mods map covering every UpgradeId. */
+function zeroMods(): Record<UpgradeId, number> {
+  return {
+    fireRate: 0, multishot: 0, pierce: 0, drone: 0, shield: 0, bomb: 0,
+    pickup: 0, speed: 0, damage: 0, ricochet: 0, crit: 0, bulletSpeed: 0,
+  };
+}
 
 function makeEngine(seed = 1234) {
   return new GwarsEngine(900, 640, buildRunConfig(defaultMeta(), seed));
@@ -131,5 +145,35 @@ describe("rerolls", () => {
       offerTo(engine, { kind: "stackable", id: "speed", rarity: "common", potency: 1 })
     );
     expect(engine.rerolls).toBe(start + 1); // wave 4 banks nothing
+  });
+});
+
+describe("new combos", () => {
+  it("offers Executioner once crit 2 + damage 3 are met", () => {
+    const mods = { ...zeroMods(), damage: 3, crit: 2 };
+    const combos = availableCombos(mods, new Set(), new Set());
+    expect(combos).toContain("executioner");
+  });
+
+  it("Executioner raises crit multiplier to 5", () => {
+    const fx = defaultComboEffects();
+    COMBOS.executioner.apply(fx);
+    expect(fx.critMul).toBe(5);
+  });
+
+  it("Tesla Cage requires arcReactor + fireRate 3", () => {
+    const mods = { ...zeroMods(), fireRate: 3 };
+    const withUnique = availableCombos(mods, new Set(["arcReactor"]), new Set());
+    expect(withUnique).toContain("teslaCage");
+    const withoutUnique = availableCombos(mods, new Set(), new Set());
+    expect(withoutUnique).not.toContain("teslaCage");
+  });
+
+  it("Pinball needs ricochet 2 + pierce 2 and speeds bounces up", () => {
+    const mods = { ...zeroMods(), ricochet: 2, pierce: 2 };
+    expect(availableCombos(mods, new Set(), new Set())).toContain("pinball");
+    const fx = defaultComboEffects();
+    COMBOS.pinball.apply(fx);
+    expect(fx.bounceSpeedMul).toBeGreaterThan(1);
   });
 });

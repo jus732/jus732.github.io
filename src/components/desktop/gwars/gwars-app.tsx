@@ -30,8 +30,14 @@ import {
 } from "@/components/desktop/gwars/rarity";
 import { WarpGrid } from "@/components/desktop/gwars/grid";
 import {
+  flashMilestone,
+  flashScreen,
   render,
   renderBackdrop,
+  spawnArc,
+  spawnBossShatter,
+  spawnRing,
+  spawnShatter,
   type RenderFrame,
 } from "@/components/desktop/gwars/renderer";
 import { gwarsAudio } from "@/components/desktop/gwars/audio";
@@ -74,6 +80,8 @@ const AIM_KEYS: Record<string, [number, number]> = {
 };
 
 const EASY_LIVES_OPTIONS = [3, 5, 0] as const; // 0 renders as ∞
+
+const MULT_MILESTONES = new Set([5, 10, 20, 30]);
 
 /** Right-stick deflection below this aims nothing and holds fire. */
 const TOUCH_AIM_DEADZONE = 0.25;
@@ -159,7 +167,7 @@ export function GwarsApp() {
     aim: { x: 0, y: 0, active: false },
   });
   const sizeRef = React.useRef({ w: 900, h: 640, dpr: 1 });
-  const frameRef = React.useRef<RenderFrame>({ w: 900, h: 640, now: 0, shakeX: 0, shakeY: 0 });
+  const frameRef = React.useRef<RenderFrame>({ w: 900, h: 640, now: 0, dt: 0, trails: false, shakeX: 0, shakeY: 0 });
   const shakeRef = React.useRef({ mag: 0, until: 0 });
   /** Keep animating this long after the last effect, then idle. */
   const tailRef = React.useRef(0);
@@ -184,8 +192,8 @@ export function GwarsApp() {
   }, []);
 
   React.useEffect(() => {
-    gwarsAudio.muted = meta.muted;
-  }, [meta.muted]);
+    gwarsAudio.setVolume(meta.volume);
+  }, [meta.volume]);
 
   const updateMeta = React.useCallback((fn: (m: MetaState) => MetaState) => {
     setMeta((prev) => {
@@ -195,9 +203,12 @@ export function GwarsApp() {
     });
   }, []);
 
-  const toggleMute = React.useCallback(() => {
-    updateMeta((m) => ({ ...m, muted: !m.muted }));
-  }, [updateMeta]);
+  const setVolume = React.useCallback(
+    (volume: number) => {
+      updateMeta((m) => ({ ...m, volume }));
+    },
+    [updateMeta]
+  );
 
   /* ----- Canvas drawing ----- */
 
@@ -212,7 +223,9 @@ export function GwarsApp() {
     const frame = frameRef.current;
     frame.w = w;
     frame.h = h;
+    frame.dt = frame.now ? Math.min(0.05, (now - frame.now) / 1000) : 0;
     frame.now = now;
+    frame.trails = !reduceRef.current;
     const shake = shakeRef.current;
     if (now < shake.until && !reduceRef.current) {
       const falloff = (shake.until - now) / 300;
@@ -271,10 +284,18 @@ export function GwarsApp() {
             grid.pulse(ev.x, ev.y, 70, 90);
             break;
           case "enemyKill":
-            gwarsAudio.play("enemyKill");
+            gwarsAudio.playKill(ev.radius);
             grid.pulse(ev.x, ev.y, 90 + ev.radius * 3, 240);
-            if (ev.type === "boss" && !reduceRef.current) {
-              shakeRef.current = { mag: 7, until: now + 320 };
+            spawnShatter(ev.x, ev.y, ev.radius, ev.color, ev.angle);
+            if (ev.type === "boss") {
+              // Boss death spectacle: staged shatter clusters + a canvas
+              // color wash riding the engine's hitstop + slow-mo beat.
+              // Canvas-drawn so the heaviest frame skips a React render.
+              spawnBossShatter(ev.x, ev.y, ev.radius, ev.color);
+              if (!reduceRef.current) {
+                shakeRef.current = { mag: 9, until: now + 420 };
+                flashScreen("#ff5555");
+              }
             }
             break;
           case "geomPickup":
@@ -285,7 +306,13 @@ export function GwarsApp() {
             }
             break;
           case "multiplierUp":
-            gwarsAudio.play("uiSelect");
+            if (MULT_MILESTONES.has(ev.multiplier)) {
+              gwarsAudio.play("milestone");
+              flashMilestone(now);
+              grid.pulse(engineRef.current!.player.x, engineRef.current!.player.y, 260, 300);
+            } else {
+              gwarsAudio.play("uiSelect");
+            }
             break;
           case "playerHit":
             gwarsAudio.play(ev.fatal ? "playerDeath" : "playerHit");
@@ -305,6 +332,21 @@ export function GwarsApp() {
             setRerolls(engineRef.current?.rerolls ?? 0);
             setDealId((d) => d + 1);
             setPhase("reward");
+            break;
+          case "crit":
+            gwarsAudio.play("crit");
+            break;
+          case "chain":
+            gwarsAudio.play("chain");
+            for (const s of ev.segments) spawnArc(s.x1, s.y1, s.x2, s.y2);
+            break;
+          case "graze":
+            gwarsAudio.play("graze");
+            grid.pulse(ev.x, ev.y, 40, 50);
+            break;
+          case "streakBonus":
+            gwarsAudio.play("streak");
+            spawnRing(ev.x, ev.y, 18, "#b6ff4d");
             break;
           case "bomb":
             gwarsAudio.play("bomb");
@@ -713,15 +755,20 @@ export function GwarsApp() {
     </div>
   );
 
-  const muteButton = (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={toggleMute}
-      aria-label={meta.muted ? "Unmute sound effects" : "Mute sound effects"}
-    >
-      {meta.muted ? <VolumeX /> : <Volume2 />}
-    </Button>
+  const volumeSlider = (
+    <div className="flex items-center gap-1.5 px-2 text-muted-foreground">
+      {meta.volume === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={Math.round(meta.volume * 100)}
+        onChange={(e) => setVolume(Number(e.target.value) / 100)}
+        onPointerUp={() => gwarsAudio.play("uiSelect")}
+        aria-label="Sound volume"
+        className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-muted [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-foreground [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-foreground"
+      />
+    </div>
   );
 
   const engine = engineRef.current;
@@ -884,7 +931,7 @@ export function GwarsApp() {
                 <Button variant="ghost" size="sm" onClick={() => setPanel("shop")}>
                   Shop
                 </Button>
-                {muteButton}
+                {volumeSlider}
               </div>
 
               <p className="mt-5 font-mono text-xs text-muted-foreground">
@@ -1004,7 +1051,7 @@ export function GwarsApp() {
                   <Button variant="ghost" size="sm" onClick={quitToTitle}>
                     Quit
                   </Button>
-                  {muteButton}
+                  {volumeSlider}
                 </div>
               </div>
             </div>

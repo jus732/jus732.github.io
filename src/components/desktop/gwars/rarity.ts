@@ -26,7 +26,10 @@ export type UpgradeId =
   | "bomb"
   | "pickup"
   | "speed"
-  | "damage";
+  | "damage"
+  | "ricochet"
+  | "crit"
+  | "bulletSpeed";
 
 export const UPGRADES: Record<UpgradeId, { name: string; desc: string; max: number }> = {
   fireRate: { name: "Overclock", desc: "+18% fire rate", max: 5 },
@@ -38,6 +41,9 @@ export const UPGRADES: Record<UpgradeId, { name: string; desc: string; max: numb
   pickup: { name: "Tractor Field", desc: "Wider geom magnet", max: 4 },
   speed: { name: "Ion Thrusters", desc: "+12% move speed", max: 4 },
   damage: { name: "Hot Load", desc: "+25% bullet damage", max: 5 },
+  ricochet: { name: "Wall Runners", desc: "Shots bounce off walls +1", max: 3 },
+  crit: { name: "Overcharge", desc: "+10% crit chance (x3 dmg)", max: 4 },
+  bulletSpeed: { name: "Rail Coils", desc: "+15% bullet speed", max: 3 },
 };
 
 /* ----- Rarity tiers ----- */
@@ -77,7 +83,15 @@ const LUCK_RAMP: Record<StandardRarity, number> = {
 
 /* ----- Uniques: one-time build-defining cards, epic+ only ----- */
 
-export type UniqueId = "novaCore" | "blackHole" | "vengeance" | "overflow";
+export type UniqueId =
+  | "novaCore"
+  | "blackHole"
+  | "vengeance"
+  | "overflow"
+  | "seekerRounds"
+  | "arcReactor"
+  | "aftCannon"
+  | "sawOrbitals";
 
 export const UNIQUES: Record<
   UniqueId,
@@ -103,11 +117,39 @@ export const UNIQUES: Record<
     desc: "Every 5th volley becomes a piercing mega-bolt",
     rarity: "epic",
   },
+  seekerRounds: {
+    name: "Seeker Rounds",
+    desc: "Bullets curve toward the nearest enemy",
+    rarity: "epic",
+  },
+  arcReactor: {
+    name: "Arc Reactor",
+    desc: "Kills arc chain lightning to nearby enemies",
+    rarity: "legendary",
+  },
+  aftCannon: {
+    name: "Aft Cannon",
+    desc: "Every volley also fires backward",
+    rarity: "epic",
+  },
+  sawOrbitals: {
+    name: "Saw Orbitals",
+    desc: "Two blades orbit you, shredding contact",
+    rarity: "legendary",
+  },
 };
 
 /* ----- Combos: additive, gated fusions ----- */
 
-export type ComboId = "lanceArray" | "meltdown" | "swarmBay" | "magnetar";
+export type ComboId =
+  | "lanceArray"
+  | "meltdown"
+  | "swarmBay"
+  | "magnetar"
+  | "pinball"
+  | "executioner"
+  | "missileSwarm"
+  | "teslaCage";
 
 /**
  * The fused-effect knobs a combo mutates. The engine owns one instance
@@ -126,6 +168,14 @@ export type ComboEffects = {
   /** The tractor field also drags enemies toward the player. */
   enemyDrag: boolean;
   novaRadiusMul: number;
+  /** Crit damage multiplier (base 3; executioner raises it). */
+  critMul: number;
+  /** Homing turn-rate multiplier (missileSwarm raises it). */
+  homingStrength: number;
+  /** Chain-lightning jumps per kill (teslaCage raises it). */
+  chainJumps: number;
+  /** Per-bounce bullet speed-up (pinball); 1 = no change. */
+  bounceSpeedMul: number;
 };
 
 export function defaultComboEffects(): ComboEffects {
@@ -137,6 +187,10 @@ export function defaultComboEffects(): ComboEffects {
     droneShots: 1,
     enemyDrag: false,
     novaRadiusMul: 1,
+    critMul: 3,
+    homingStrength: 1,
+    chainJumps: 3,
+    bounceSpeedMul: 1,
   };
 }
 
@@ -184,6 +238,39 @@ export const COMBOS: Record<
     apply(fx) {
       fx.enemyDrag = true;
       fx.novaRadiusMul *= 1.5;
+    },
+  },
+  pinball: {
+    name: "Pinball",
+    desc: "Bounces keep pierce and speed shots up",
+    requires: { ricochet: 2, pierce: 2 },
+    apply(fx) {
+      fx.bounceSpeedMul *= 1.15;
+    },
+  },
+  executioner: {
+    name: "Executioner",
+    desc: "Crits hit for x5 with a shockwave",
+    requires: { crit: 2, damage: 3 },
+    apply(fx) {
+      fx.critMul = Math.max(fx.critMul, 5);
+    },
+  },
+  missileSwarm: {
+    name: "Missile Swarm",
+    desc: "Homing turns aggressive; lanes fan wide",
+    requires: { seekerRounds: 1, multishot: 2 },
+    apply(fx) {
+      fx.homingStrength *= 2.2;
+      fx.laneSpreadMul *= 1.4;
+    },
+  },
+  teslaCage: {
+    name: "Tesla Cage",
+    desc: "Chain lightning jumps far more often",
+    requires: { arcReactor: 1, fireRate: 3 },
+    apply(fx) {
+      fx.chainJumps = Math.max(fx.chainJumps, 5);
     },
   },
 };

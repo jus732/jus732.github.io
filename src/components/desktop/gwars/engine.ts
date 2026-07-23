@@ -8,7 +8,14 @@
  * `events` for sounds, grid ripples, and screen shake.
  */
 
-import { ARCHETYPES, spawnPlanForWave, type EnemyTypeId } from "./enemies";
+import {
+  ARCHETYPES,
+  spawnPlanForWave,
+  rollAffix,
+  AFFIXES,
+  type EnemyTypeId,
+  type AffixId,
+} from "./enemies";
 import {
   COMBOS,
   UPGRADES,
@@ -59,6 +66,16 @@ export type Enemy = {
   timer: number;
   /** Hit flash, seconds remaining. */
   flash: number;
+  /** Elite affix, or null for a plain enemy. */
+  affix: AffixId | null;
+  /** Shielded affix: one free hit before damage lands. */
+  shielded: boolean;
+  /** Within a warden's aura this step: incoming damage is reduced. */
+  warded: boolean;
+  /** Already paid out a graze bonus (one per enemy lifetime). */
+  grazed: boolean;
+  /** Direction (radians) of the last damaging blow; NaN until first hit. */
+  hitAngle: number;
 };
 
 /** The limited view of the sim that enemy behaviors get. */
@@ -71,6 +88,8 @@ export interface World {
   rand(): number;
   spawnChild(type: EnemyTypeId, x: number, y: number): Enemy | null;
   byId(id: number): Enemy | null;
+  /** Nearest active bullet within `range` of a point, for evasion AI. */
+  bulletThreat(x: number, y: number, range: number): { vx: number; vy: number } | null;
 }
 
 export type Bullet = {
@@ -86,6 +105,8 @@ export type Bullet = {
   /** Last enemy id hit, so a piercing shot damages each enemy once. */
   lastHit: number;
   fromDrone: boolean;
+  /** Wall bounces remaining (ricochet upgrade). */
+  bounces: number;
 };
 
 export type Geom = {
@@ -111,6 +132,15 @@ export type Particle = {
 
 export type Drone = { angle: number; x: number; y: number; cd: number };
 
+export type Hazard = {
+  active: boolean;
+  x: number;
+  y: number;
+  radius: number;
+  /** Telegraph seconds remaining; detonates at 0. */
+  warn: number;
+};
+
 /* ----- In-run upgrades (wave-clear reward picks) -----
  * The stackable upgrade table + rarity/offer helpers live in rarity.ts;
  * UPGRADES and UpgradeId are re-exported above for existing importers. */
@@ -118,9 +148,13 @@ export type Drone = { angle: number; x: number; y: number; cd: number };
 export type GwarsEvent =
   | { kind: "fire" }
   | { kind: "enemySpawn"; x: number; y: number }
-  | { kind: "enemyKill"; x: number; y: number; type: EnemyTypeId; color: string; radius: number }
+  | { kind: "enemyKill"; x: number; y: number; type: EnemyTypeId; color: string; radius: number; angle: number }
   | { kind: "geomPickup"; x: number; y: number }
   | { kind: "multiplierUp"; multiplier: number }
+  | { kind: "crit"; x: number; y: number }
+  | { kind: "chain"; segments: { x1: number; y1: number; x2: number; y2: number }[] }
+  | { kind: "graze"; x: number; y: number }
+  | { kind: "streakBonus"; x: number; y: number; kills: number }
   | { kind: "playerHit"; x: number; y: number; fatal: boolean; shielded: boolean }
   | { kind: "waveClear"; wave: number; choices: UpgradeOffer[] }
   | { kind: "bomb"; x: number; y: number }
@@ -156,8 +190,8 @@ const MOVE_SMOOTHING = 14;
 
 const BULLET_POOL = 256;
 const GEOM_POOL = 320;
-const PARTICLE_POOL = 640;
-const MAX_ENEMIES = 220;
+const PARTICLE_POOL = 900;
+const MAX_ENEMIES = 300;
 const BULLET_LIFE = 1.6;
 
 const GEOMS_PER_MULT = 12;
@@ -178,6 +212,40 @@ const DRONE_SPREAD_ANGLE = 0.18;
 
 const REROLL_CAP = 5;
 const REROLL_EVERY_WAVES = 3;
+
+/* Warden aura: enemies inside it take reduced damage. Kept moderate so a
+ * warded pack is a priority-target puzzle, not a damage-stat check. */
+export const WARDEN_AURA = 130;
+const WARDEN_REDUCTION = 0.5;
+
+/* Telegraphed hazard rings (volatile elite deaths). */
+const HAZARD_POOL = 24;
+const HAZARD_RADIUS = 80;
+const HAZARD_WARN = 0.6;
+
+/* Graze: enemies skimming past without hitting charge the multiplier. */
+const GRAZE_BAND = 22;
+const GRAZE_SCORE = 2;
+
+/* Streak banker: long kill chains drop a bonus geom cluster. */
+const STREAK_WINDOW = 1.0;
+const STREAK_MIN = 10;
+
+/* Boss death spectacle: brief hitstop, then slow motion. */
+const SLOWMO_MS = 900;
+const SLOWMO_SCALE = 0.35;
+/** Min sim seconds between micro-hitstops so dense waves don't stutter. */
+const MICRO_FREEZE_CD = 0.25;
+
+/* Build-variety tuning (Phase 3). */
+const CRIT_CHANCE_PER = 0.1;
+const CHAIN_RANGE = 180;
+const CHAIN_DAMAGE = 3;
+const BLADE_COUNT = 2;
+const BLADE_ORBIT = 52;
+const BLADE_SPIN = 3.4;
+const BLADE_RADIUS = 12;
+const BLADE_DPS = 14;
 
 /* Unique-upgrade tuning */
 const NOVA_RADIUS = 90;
@@ -280,6 +348,12 @@ export class GwarsEngine implements World {
   lives: number;
   bombs: number;
   time = 0;
+  /** Hitstop remaining in real ms; while > 0, tick() holds the sim. */
+  freezeMs = 0;
+  /** Slow-motion remaining in real ms (boss deaths); scales sim speed. */
+  slowMoMs = 0;
+  /** Sim time of the last micro-hitstop, for the cooldown gate. */
+  private microFreezeAt = -Infinity;
   events: GwarsEvent[] = [];
   pendingChoices: UpgradeOffer[] = [];
   /** One-time cards acquired this run (read by the HUD / reward UI). */
@@ -314,6 +388,9 @@ export class GwarsEngine implements World {
     pickup: 0,
     speed: 0,
     damage: 0,
+    ricochet: 0,
+    crit: 0,
+    bulletSpeed: 0,
   };
 
   enemies: Enemy[] = [];
@@ -321,6 +398,9 @@ export class GwarsEngine implements World {
   geoms: Geom[] = [];
   particles: Particle[] = [];
   drones: Drone[] = [];
+  hazards: Hazard[] = [];
+  /** Saw Orbitals unique: contact-damage blades orbiting the player. */
+  blades: { angle: number; x: number; y: number }[] = [];
 
   readonly config: RunConfig;
 
@@ -341,6 +421,18 @@ export class GwarsEngine implements World {
   private blackHoleCd = BLACK_HOLE_PERIOD;
   /** Nova blasts queued by kills, applied after the death sweep. */
   private novaQueue: { x: number; y: number }[] = [];
+  /** Arc Reactor chain origins queued by kills, resolved after the sweep. */
+  private chainQueue: { x: number; y: number }[] = [];
+  private bladeSpin = 0;
+  /** Reused scratch list of live wardens, rebuilt each ward pass. */
+  private wardens: Enemy[] = [];
+  /** Reused scratch list of graze candidates found this step. */
+  private grazeScratch: Enemy[] = [];
+  /** Kill-chain state for the streak banker. */
+  private streakKills = 0;
+  private streakTimer = 0;
+  private streakX = 0;
+  private streakY = 0;
 
   constructor(w: number, h: number, config: RunConfig) {
     this.w = w;
@@ -356,7 +448,7 @@ export class GwarsEngine implements World {
     for (let i = 0; i < BULLET_POOL; i++) {
       this.bullets.push({
         active: false, x: 0, y: 0, vx: 0, vy: 0, damage: 0,
-        pierce: 0, radius: 0, life: 0, lastHit: -1, fromDrone: false,
+        pierce: 0, radius: 0, life: 0, lastHit: -1, fromDrone: false, bounces: 0,
       });
     }
     for (let i = 0; i < GEOM_POOL; i++) {
@@ -367,6 +459,9 @@ export class GwarsEngine implements World {
         active: false, x: 0, y: 0, vx: 0, vy: 0,
         life: 0, maxLife: 1, size: 0, color: "#fff",
       });
+    }
+    for (let i = 0; i < HAZARD_POOL; i++) {
+      this.hazards.push({ active: false, x: 0, y: 0, radius: 0, warn: 0 });
     }
     this.syncDrones();
     this.buildWave();
@@ -394,6 +489,22 @@ export class GwarsEngine implements World {
   byId(id: number): Enemy | null {
     for (const e of this.enemies) if (e.id === id) return e;
     return null;
+  }
+
+  bulletThreat(x: number, y: number, range: number): { vx: number; vy: number } | null {
+    let best: Bullet | null = null;
+    let bestD = range * range;
+    for (const b of this.bullets) {
+      if (!b.active || b.fromDrone) continue;
+      const dx = b.x - x;
+      const dy = b.y - y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) {
+        bestD = d;
+        best = b;
+      }
+    }
+    return best ? { vx: best.vx, vy: best.vy } : null;
   }
 
   /* ----- Public API driven by the UI ----- */
@@ -458,8 +569,27 @@ export class GwarsEngine implements World {
     return true;
   }
 
+  /** Queue a hitstop; the longest pending freeze wins. */
+  requestFreeze(ms: number) {
+    if (ms > this.freezeMs) this.freezeMs = ms;
+  }
+
   tick(dtMs: number) {
-    this.acc += Math.min(dtMs, MAX_FRAME_MS);
+    const clamped = Math.min(dtMs, MAX_FRAME_MS);
+    // Hitstop holds the whole sim (and particles) for a beat of punch.
+    // It spends real ms and draws no RNG, so offer/spawn determinism holds.
+    if (this.freezeMs > 0) {
+      this.freezeMs = Math.max(0, this.freezeMs - clamped);
+      if (this.freezeMs > 0) return;
+    }
+    // Boss-death slow motion: fewer fixed steps per real second. The step
+    // sequence itself is untouched, so determinism holds here too.
+    let simMs = clamped;
+    if (this.slowMoMs > 0) {
+      this.slowMoMs = Math.max(0, this.slowMoMs - clamped);
+      simMs = clamped * SLOWMO_SCALE;
+    }
+    this.acc += simMs;
     const stepMs = STEP * 1000;
     while (this.acc >= stepMs) {
       this.acc -= stepMs;
@@ -484,14 +614,19 @@ export class GwarsEngine implements World {
     this.updatePlayer(dt);
     this.updateSpawning(dt);
     this.updateBlackHole(dt);
+    this.updateHazard(dt);
     this.updateEnemies(dt);
+    this.updateWards();
     this.hash.rebuild(this.enemies);
     this.updateBullets(dt);
     this.updateDrones(dt);
+    this.updateBlades(dt);
     this.updateGeoms(dt);
     this.checkPlayerCollision();
     this.sweepDead();
     this.processNovas();
+    this.processChains();
+    this.updateStreak(dt);
     this.checkWaveClear();
   }
 
@@ -545,11 +680,7 @@ export class GwarsEngine implements World {
 
     p.fireCd -= dt;
     if (firing && aiming) {
-      const cooldown =
-        this.config.ship.cooldown /
-        (this.config.fireRateMul *
-          Math.pow(1.18, this.mods.fireRate) *
-          this.comboFx.fireRateMul);
+      const cooldown = this.volleyCooldown;
       while (p.fireCd <= 0) {
         p.fireCd += cooldown;
         this.fireVolley(p.angle);
@@ -557,6 +688,17 @@ export class GwarsEngine implements World {
     } else if (p.fireCd < 0) {
       p.fireCd = 0;
     }
+  }
+
+  /** Seconds between volleys after all fire-rate modifiers. The renderer
+   *  reads it too, so recoil/muzzle-flash timing tracks the real cadence. */
+  get volleyCooldown(): number {
+    return (
+      this.config.ship.cooldown /
+      (this.config.fireRateMul *
+        Math.pow(1.18, this.mods.fireRate) *
+        this.comboFx.fireRateMul)
+    );
   }
 
   private fireVolley(angle: number) {
@@ -569,6 +711,8 @@ export class GwarsEngine implements World {
       fx.damageMul;
     const pierce = fx.infinitePierce ? 999 : ship.pierce + this.mods.pierce;
     const lanes = 1 + this.mods.multishot;
+    const bounces = this.mods.ricochet;
+    const speedMul = 1 + 0.15 * this.mods.bulletSpeed;
     const p = this.player;
 
     // Overflow: every Nth volley is a single piercing mega-bolt instead.
@@ -578,17 +722,32 @@ export class GwarsEngine implements World {
       this.spawnBullet(
         p.x + cos * 12,
         p.y + sin * 12,
-        cos * ship.bulletSpeed,
-        sin * ship.bulletSpeed,
+        cos * ship.bulletSpeed * speedMul,
+        sin * ship.bulletSpeed * speedMul,
         damage * OVERFLOW_DAMAGE_MUL,
         999,
         ship.bulletRadius * 2.4,
-        false
+        false,
+        bounces
       );
       this.events.push({ kind: "fire" });
       return;
     }
 
+    this.fireLanes(angle, damage, pierce, lanes, bounces, speedMul);
+    if (this.uniques.has("aftCannon")) {
+      this.fireLanes(angle + Math.PI, damage, pierce, lanes, bounces, speedMul);
+    }
+    this.events.push({ kind: "fire" });
+  }
+
+  private fireLanes(
+    angle: number, damage: number, pierce: number,
+    lanes: number, bounces: number, speedMul: number
+  ) {
+    const ship = this.config.ship;
+    const fx = this.comboFx;
+    const p = this.player;
     for (const da of ship.spreadAngles) {
       const a =
         angle + da * fx.laneSpreadMul + (this.rng() - 0.5) * 2 * ship.jitter;
@@ -599,21 +758,22 @@ export class GwarsEngine implements World {
         this.spawnBullet(
           p.x + cos * 12 - sin * off,
           p.y + sin * 12 + cos * off,
-          cos * ship.bulletSpeed,
-          sin * ship.bulletSpeed,
+          cos * ship.bulletSpeed * speedMul,
+          sin * ship.bulletSpeed * speedMul,
           damage,
           pierce,
           ship.bulletRadius,
-          false
+          false,
+          bounces
         );
       }
     }
-    this.events.push({ kind: "fire" });
   }
 
   private spawnBullet(
     x: number, y: number, vx: number, vy: number,
-    damage: number, pierce: number, radius: number, fromDrone: boolean
+    damage: number, pierce: number, radius: number, fromDrone: boolean,
+    bounces = 0
   ) {
     for (const b of this.bullets) {
       if (b.active) continue;
@@ -628,6 +788,7 @@ export class GwarsEngine implements World {
       b.life = BULLET_LIFE;
       b.lastHit = -1;
       b.fromDrone = fromDrone;
+      b.bounces = bounces;
       return;
     }
   }
@@ -638,6 +799,12 @@ export class GwarsEngine implements World {
     this.spawnPlan = spawnPlanForWave(this.wave, this.rng);
     this.spawnIndex = 0;
     this.spawnClock = 0;
+  }
+
+  /** Elite chance: 0 before wave 4, linearly to ~0.2 by wave 15, capped. */
+  eliteChanceForWave(wave: number): number {
+    if (wave < 4) return 0;
+    return Math.min(0.2, (wave - 3) * (0.2 / 12));
   }
 
   private updateSpawning(dt: number) {
@@ -668,12 +835,28 @@ export class GwarsEngine implements World {
       if (dx * dx + dy * dy > 170 * 170) break;
     }
     const e = this.spawnEnemyAt(type, x, y, 0.9);
+    // Bosses take an affix only from wave 15+ (spec); others ramp from w4.
+    const eligible = type !== "boss" || this.wave >= 15;
+    if (eligible && this.rng() < this.eliteChanceForWave(this.wave)) {
+      this.applyAffix(e, rollAffix(this.rng));
+    }
     this.events.push({ kind: "enemySpawn", x: e.x, y: e.y });
+  }
+
+  private applyAffix(e: Enemy, affix: AffixId) {
+    e.affix = affix;
+    const def = AFFIXES[affix];
+    e.hp *= def.hpMul;
+    e.maxHp *= def.hpMul;
+    e.speed *= def.speedMul;
+    if (affix === "shielded") e.shielded = true;
   }
 
   private spawnEnemyAt(type: EnemyTypeId, x: number, y: number, grace: number): Enemy {
     const arch = ARCHETYPES[type];
-    const hpScale = 1 + (this.wave - 1) * 0.07;
+    // Gentle, capped HP growth: difficulty should come from count and
+    // movement, not from bullet-sponges that force a damage build.
+    const hpScale = Math.min(2, 1 + (this.wave - 1) * 0.03);
     const e: Enemy = {
       id: this.nextId++,
       type,
@@ -692,6 +875,11 @@ export class GwarsEngine implements World {
       link: -1,
       timer: 0,
       flash: 0,
+      affix: null,
+      shielded: false,
+      warded: false,
+      grazed: false,
+      hitAngle: Number.NaN,
     };
     this.enemies.push(e);
     arch.onSpawn?.(e, this);
@@ -705,19 +893,67 @@ export class GwarsEngine implements World {
       e.flash = Math.max(0, (e.flash ?? 0) - dt);
       if (e.grace > 0) continue; // still materializing
       ARCHETYPES[e.type].behavior(e, this, dt);
+      if (e.affix === "gilded") {
+        // Skittish: bias away from the player on top of its base behavior.
+        const dx = e.x - this.player.x;
+        const dy = e.y - this.player.y;
+        const d = Math.hypot(dx, dy) || 1;
+        e.vx += (dx / d) * e.speed * 0.5 * dt * 4;
+        e.vy += (dy / d) * e.speed * 0.5 * dt * 4;
+      }
       e.x = clamp(e.x + e.vx * dt, e.radius, this.w - e.radius);
       e.y = clamp(e.y + e.vy * dt, e.radius, this.h - e.radius);
     }
   }
 
   private updateBullets(dt: number) {
+    const homing = this.uniques.has("seekerRounds");
+    const critChance = this.mods.crit * CRIT_CHANCE_PER;
     for (const b of this.bullets) {
       if (!b.active) continue;
       b.life -= dt;
+      // Seeker Rounds: steer toward the nearest enemy via the spatial hash.
+      if (homing && !b.fromDrone) {
+        let best: Enemy | null = null;
+        let bestD = 220 * 220;
+        this.hash.query(b.x, b.y, (i) => {
+          const e = this.enemies[i];
+          if (e.grace > 0 || e.hp <= 0) return;
+          const dx = e.x - b.x;
+          const dy = e.y - b.y;
+          const d = dx * dx + dy * dy;
+          if (d < bestD) { bestD = d; best = e; }
+        });
+        if (best) {
+          const target = best as Enemy;
+          const speed = Math.hypot(b.vx, b.vy) || 1;
+          const dx = target.x - b.x;
+          const dy = target.y - b.y;
+          const dd = Math.hypot(dx, dy) || 1;
+          const turn = Math.min(1, 3 * this.comboFx.homingStrength * dt);
+          b.vx += ((dx / dd) * speed - b.vx) * turn;
+          b.vy += ((dy / dd) * speed - b.vy) * turn;
+        }
+      }
       b.x += b.vx * dt;
       b.y += b.vy * dt;
+      if (b.life <= 0) {
+        b.active = false;
+        continue;
+      }
+      // Ricochet: reflect off the arena walls while bounces remain.
+      if (b.bounces > 0) {
+        let bounced = false;
+        if (b.x < b.radius && b.vx < 0) { b.vx = -b.vx; b.x = b.radius; b.bounces--; bounced = true; }
+        else if (b.x > this.w - b.radius && b.vx > 0) { b.vx = -b.vx; b.x = this.w - b.radius; b.bounces--; bounced = true; }
+        if (b.y < b.radius && b.vy < 0) { b.vy = -b.vy; b.y = b.radius; b.bounces--; bounced = true; }
+        else if (b.y > this.h - b.radius && b.vy > 0) { b.vy = -b.vy; b.y = this.h - b.radius; b.bounces--; bounced = true; }
+        if (bounced && this.comboFx.bounceSpeedMul !== 1) {
+          b.vx *= this.comboFx.bounceSpeedMul;
+          b.vy *= this.comboFx.bounceSpeedMul;
+        }
+      }
       if (
-        b.life <= 0 ||
         b.x < -20 || b.x > this.w + 20 ||
         b.y < -20 || b.y > this.h + 20
       ) {
@@ -732,8 +968,20 @@ export class GwarsEngine implements World {
         const dy = e.y - b.y;
         const rr = e.radius + b.radius;
         if (dx * dx + dy * dy > rr * rr) return;
-        e.hp -= b.damage;
+        // Crit: gated roll so non-crit builds never touch the RNG stream.
+        let dealt = b.damage;
+        if (critChance > 0 && this.rng() < critChance) {
+          dealt *= this.comboFx.critMul;
+          this.events.push({ kind: "crit", x: b.x, y: b.y });
+          if (!this.reduceParticles()) this.spawnBurst(b.x, b.y, "#fff0a0", 6, 220, 0.3);
+        }
+        if (e.shielded) {
+          e.shielded = false; // one free hit absorbed
+        } else {
+          e.hp -= e.warded ? dealt * (1 - WARDEN_REDUCTION) : dealt;
+        }
         e.flash = 0.08;
+        e.hitAngle = Math.atan2(b.vy, b.vx);
         b.lastHit = e.id;
         if (!this.reduceParticles()) {
           this.spawnBurst(b.x, b.y, ARCHETYPES[e.type].color, 3, 140, 0.25);
@@ -742,6 +990,34 @@ export class GwarsEngine implements World {
           b.pierce--;
         } else {
           b.active = false;
+        }
+      });
+    }
+  }
+
+  /** Saw Orbitals: contact-damage blades orbit the player. */
+  private updateBlades(dt: number) {
+    if (!this.uniques.has("sawOrbitals")) return;
+    while (this.blades.length < BLADE_COUNT) {
+      this.blades.push({ angle: 0, x: this.player.x, y: this.player.y });
+    }
+    this.bladeSpin += BLADE_SPIN * dt;
+    const dmg = BLADE_DPS * dt * this.config.damageMul;
+    for (let i = 0; i < this.blades.length; i++) {
+      const bl = this.blades[i];
+      bl.angle = this.bladeSpin + (i * Math.PI * 2) / this.blades.length;
+      bl.x = this.player.x + Math.cos(bl.angle) * BLADE_ORBIT;
+      bl.y = this.player.y + Math.sin(bl.angle) * BLADE_ORBIT;
+      this.hash.query(bl.x, bl.y, (idx) => {
+        const e = this.enemies[idx];
+        if (e.grace > 0 || e.hp <= 0) return;
+        const dx = e.x - bl.x;
+        const dy = e.y - bl.y;
+        const rr = e.radius + BLADE_RADIUS;
+        if (dx * dx + dy * dy <= rr * rr) {
+          e.hp -= e.warded ? dmg * (1 - WARDEN_REDUCTION) : dmg;
+          e.flash = 0.06;
+          e.hitAngle = Math.atan2(dy, dx);
         }
       });
     }
@@ -788,6 +1064,57 @@ export class GwarsEngine implements World {
           damage, 0, 2, true
         );
       }
+    }
+  }
+
+  /** Flag enemies inside any warden's aura so bullets do reduced damage. */
+  private updateWards() {
+    this.wardens.length = 0;
+    for (const e of this.enemies) {
+      e.warded = false;
+      if (e.type === "warden" && e.grace <= 0) this.wardens.push(e);
+    }
+    if (this.wardens.length === 0) return;
+    const r2 = WARDEN_AURA * WARDEN_AURA;
+    for (const e of this.enemies) {
+      if (e.type === "warden") continue;
+      for (const w of this.wardens) {
+        const dx = e.x - w.x;
+        const dy = e.y - w.y;
+        if (dx * dx + dy * dy <= r2) {
+          e.warded = true;
+          break;
+        }
+      }
+    }
+  }
+
+  spawnHazard(x: number, y: number) {
+    for (const hz of this.hazards) {
+      if (hz.active) continue;
+      hz.active = true;
+      hz.x = x;
+      hz.y = y;
+      hz.radius = HAZARD_RADIUS;
+      hz.warn = HAZARD_WARN;
+      return;
+    }
+  }
+
+  private updateHazard(dt: number) {
+    const p = this.player;
+    for (const hz of this.hazards) {
+      if (!hz.active) continue;
+      hz.warn -= dt;
+      if (hz.warn > 0) continue;
+      hz.active = false;
+      // Detonate: burst always; the hit lands only if caught and vulnerable.
+      this.spawnBurst(hz.x, hz.y, "#ff9e4d", 20, 340, 0.55);
+      const dx = p.x - hz.x;
+      const dy = p.y - hz.y;
+      if (p.invuln > 0) continue;
+      if (dx * dx + dy * dy > hz.radius * hz.radius) continue;
+      this.applyPlayerHit();
     }
   }
 
@@ -879,6 +1206,11 @@ export class GwarsEngine implements World {
     this.geomCount++;
     this.score += GEOM_SCORE * this.multiplier;
     this.events.push({ kind: "geomPickup", x, y });
+    this.advanceMultiplier();
+  }
+
+  /** Recompute the multiplier from geom/graze progress, announcing rises. */
+  private advanceMultiplier() {
     const next = Math.min(
       MULT_CAP,
       this.config.startMultiplier + Math.floor(this.geomCount / GEOMS_PER_MULT)
@@ -893,16 +1225,41 @@ export class GwarsEngine implements World {
     const p = this.player;
     if (p.invuln > 0) return;
     let hit = false;
+    this.grazeScratch.length = 0;
     this.hash.query(p.x, p.y, (i) => {
       if (hit) return;
       const e = this.enemies[i];
       if (e.grace > 0 || e.hp <= 0) return;
       const dx = e.x - p.x;
       const dy = e.y - p.y;
+      const d2 = dx * dx + dy * dy;
       const rr = e.radius + PLAYER_RADIUS;
-      if (dx * dx + dy * dy <= rr * rr) hit = true;
+      if (d2 <= rr * rr) {
+        hit = true;
+      } else if (!e.grazed && d2 <= (rr + GRAZE_BAND) * (rr + GRAZE_BAND)) {
+        this.grazeScratch.push(e);
+      }
     });
-    if (!hit) return;
+    if (hit) {
+      this.applyPlayerHit();
+      return;
+    }
+    for (const e of this.grazeScratch) this.registerGraze(e);
+  }
+
+  /** A near-miss: pays a sliver of multiplier progress, once per enemy. */
+  private registerGraze(e: Enemy) {
+    e.grazed = true;
+    this.geomCount++;
+    this.score += GRAZE_SCORE * this.multiplier;
+    this.events.push({ kind: "graze", x: e.x, y: e.y });
+    this.advanceMultiplier();
+  }
+
+  /** Shared consequence of any player hit (collision or hazard blast):
+   *  Vengeance lash, shield pop, or life loss with the board-clear mercy. */
+  private applyPlayerHit() {
+    const p = this.player;
 
     // Vengeance Field: any hit lashes back with a damaging shockwave.
     if (this.uniques.has("vengeance")) {
@@ -913,6 +1270,7 @@ export class GwarsEngine implements World {
         if (dist >= VENGEANCE_RADIUS) continue;
         e.hp -= VENGEANCE_DAMAGE * this.config.damageMul;
         e.flash = 0.08;
+        e.hitAngle = Math.atan2(dy, dx);
         if (dist > 0.001) {
           e.vx += (dx / dist) * 380;
           e.vy += (dy / dist) * 380;
@@ -977,19 +1335,54 @@ export class GwarsEngine implements World {
 
   /** Remove enemies whose hp hit zero this step, paying out score/geoms. */
   private sweepDead() {
+    let killsThisStep = 0;
+    let bigKill = false;
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       if (e.hp > 0) continue;
       const arch = ARCHETYPES[e.type];
+      killsThisStep++;
+      if (e.radius >= 13) bigKill = true;
+      if (e.type === "boss") {
+        // Boss death spectacle: a hard beat, then the arena in slow motion.
+        this.slowMoMs = SLOWMO_MS;
+        this.requestFreeze(60);
+      }
       this.kills++;
-      this.score += arch.score * this.multiplier;
-      for (let g = 0; g < arch.geoms; g++) {
+      this.streakKills++;
+      this.streakTimer = STREAK_WINDOW;
+      this.streakX = e.x;
+      this.streakY = e.y;
+      const geomMul = e.affix === "gilded" || e.affix === "veteran" ? 2 : 1;
+      this.score += arch.score * this.multiplier * geomMul;
+      for (let g = 0; g < arch.geoms * geomMul; g++) {
         this.spawnGeom(e.x, e.y);
       }
-      this.spawnBurst(
+      // Enemies that were never directly struck (bombs, board clears)
+      // splatter away from the player instead of along a blow.
+      const killAngle = Number.isNaN(e.hitAngle)
+        ? Math.atan2(e.y - this.player.y, e.x - this.player.x)
+        : e.hitAngle;
+      // Sparks: many, fast, short — sprayed along the killing blow.
+      this.spawnKillSpray(
         e.x, e.y, arch.color,
-        Math.min(26, 6 + Math.floor(e.radius)), 300, 0.7
+        Math.min(40, 10 + Math.floor(e.radius * 1.4)), 360, 0.7, killAngle
       );
+      // Debris: fewer, slower, larger — chunks thrown from bigger kills.
+      if (!this.reduceParticles()) {
+        const chunks = Math.min(10, 2 + Math.floor(e.radius / 4));
+        for (let c = 0; c < chunks; c++) {
+          const a = this.rng() * Math.PI * 2;
+          const v = 60 + this.rng() * 140;
+          this.spawnParticle(
+            e.x, e.y,
+            Math.cos(a) * v, Math.sin(a) * v,
+            0.6 + this.rng() * 0.5,
+            2.5 + this.rng() * 2.5,
+            arch.color
+          );
+        }
+      }
       this.events.push({
         kind: "enemyKill",
         x: e.x,
@@ -997,16 +1390,54 @@ export class GwarsEngine implements World {
         type: e.type,
         color: arch.color,
         radius: e.radius,
+        angle: killAngle,
       });
       arch.onDeath?.(e, this);
+      if (e.affix === "volatile") this.spawnHazard(e.x, e.y);
       if (this.uniques.has("novaCore")) {
         this.novaQueue.push({ x: e.x, y: e.y });
+      }
+      if (this.uniques.has("arcReactor")) {
+        this.chainQueue.push({ x: e.x, y: e.y });
       }
       // onDeath may push children; recompute position before swap-remove.
       const last = this.enemies.length - 1;
       this.enemies[i] = this.enemies[last];
       this.enemies.pop();
     }
+    // Micro-hitstop: a chunky kill or a burst of them lands with a beat.
+    // Cooled down so dense waves punctuate instead of stuttering.
+    if (
+      (bigKill || killsThisStep >= 3) &&
+      this.time - this.microFreezeAt >= MICRO_FREEZE_CD
+    ) {
+      this.microFreezeAt = this.time;
+      this.requestFreeze(50);
+    }
+  }
+
+  /** Tick the kill-chain window; when it lapses, bank any streak bonus. */
+  private updateStreak(dt: number) {
+    if (this.streakKills === 0) return;
+    this.streakTimer -= dt;
+    if (this.streakTimer <= 0) this.finalizeStreak();
+  }
+
+  /** Streak banker: 10+ kills inside the chain window drop bonus geoms
+   *  at the last kill, scaling with the chain length. */
+  private finalizeStreak() {
+    if (this.streakKills >= STREAK_MIN) {
+      const bonus = Math.min(14, 2 + Math.floor(this.streakKills / 2));
+      for (let g = 0; g < bonus; g++) this.spawnGeom(this.streakX, this.streakY);
+      this.events.push({
+        kind: "streakBonus",
+        x: this.streakX,
+        y: this.streakY,
+        kills: this.streakKills,
+      });
+    }
+    this.streakKills = 0;
+    this.streakTimer = 0;
   }
 
   /** Nova Core: kills detonate. Damage lands after the sweep, so chain
@@ -1023,6 +1454,7 @@ export class GwarsEngine implements World {
         if (dx * dx + dy * dy > radius * radius) continue;
         e.hp -= damage;
         e.flash = 0.08;
+        e.hitAngle = Math.atan2(dy, dx);
       }
       if (!this.reduceParticles()) {
         this.spawnBurst(n.x, n.y, NOVA_COLOR, 12, 340, 0.5);
@@ -1031,9 +1463,45 @@ export class GwarsEngine implements World {
     this.novaQueue.length = 0;
   }
 
+  /** Arc Reactor: each kill arcs to nearby enemies, damaging a small
+   *  chain. Resolved after the sweep so cascades advance one step/tick. */
+  private processChains() {
+    if (this.chainQueue.length === 0) return;
+    const jumps = this.comboFx.chainJumps;
+    for (const origin of this.chainQueue) {
+      const segments: { x1: number; y1: number; x2: number; y2: number }[] = [];
+      let fromX = origin.x;
+      let fromY = origin.y;
+      const hit = new Set<number>();
+      for (let j = 0; j < jumps; j++) {
+        let best: Enemy | null = null;
+        let bestD = CHAIN_RANGE * CHAIN_RANGE;
+        for (const e of this.enemies) {
+          if (e.grace > 0 || e.hp <= 0 || hit.has(e.id)) continue;
+          const dx = e.x - fromX;
+          const dy = e.y - fromY;
+          const d = dx * dx + dy * dy;
+          if (d < bestD) { bestD = d; best = e; }
+        }
+        if (!best) break;
+        best.hp -= CHAIN_DAMAGE * this.config.damageMul;
+        best.flash = 0.08;
+        best.hitAngle = Math.atan2(best.y - fromY, best.x - fromX);
+        hit.add(best.id);
+        segments.push({ x1: fromX, y1: fromY, x2: best.x, y2: best.y });
+        fromX = best.x;
+        fromY = best.y;
+      }
+      if (segments.length > 0) this.events.push({ kind: "chain", segments });
+    }
+    this.chainQueue.length = 0;
+  }
+
   private checkWaveClear() {
     if (this.phase !== "combat") return;
     if (this.spawnIndex < this.spawnPlan.length || this.enemies.length > 0) return;
+    // A pending streak pays out now so its geoms join the auto-bank below.
+    this.finalizeStreak();
     // Auto-bank any geoms still on the floor so nothing is lost to the pause.
     for (const g of this.geoms) {
       if (!g.active) continue;
@@ -1074,6 +1542,30 @@ export class GwarsEngine implements World {
       g.vy = Math.sin(a) * v;
       g.life = GEOM_LIFE;
       return;
+    }
+  }
+
+  /** Kill spray: most sparks in a cone along the blow, the rest a slower
+   *  radial backsplash, so kills read as punched-through, not popped. */
+  private spawnKillSpray(
+    x: number, y: number, color: string,
+    count: number, speed: number, life: number, angle: number
+  ) {
+    for (let i = 0; i < count; i++) {
+      const forward = this.rng() < 0.7;
+      const a = forward
+        ? angle + (this.rng() - 0.5) * 1.1
+        : this.rng() * Math.PI * 2;
+      const v = speed * (forward
+        ? 0.6 + this.rng() * 0.7
+        : 0.2 + this.rng() * 0.35);
+      this.spawnParticle(
+        x, y,
+        Math.cos(a) * v, Math.sin(a) * v,
+        life * (0.5 + this.rng() * 0.5),
+        1.5 + this.rng() * 2,
+        color
+      );
     }
   }
 

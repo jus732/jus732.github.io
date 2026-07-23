@@ -34,7 +34,8 @@ export type MetaState = {
   difficulty: Difficulty;
   /** Easy-mode starting lives; 0 means infinite. */
   easyLives: number;
-  muted: boolean;
+  /** Master SFX volume, 0..1. */
+  volume: number;
 };
 
 /** Permanent shop upgrades; costs.length is the max level. */
@@ -110,7 +111,7 @@ export function defaultMeta(): MetaState {
     totalRuns: 0,
     difficulty: "normal",
     easyLives: 3,
-    muted: false,
+    volume: 0.4,
   };
 }
 
@@ -144,7 +145,11 @@ export function loadMeta(): MetaState {
     if (typeof parsed.totalRuns === "number") meta.totalRuns = parsed.totalRuns;
     if (parsed.difficulty === "easy") meta.difficulty = "easy";
     if ([0, 3, 5].includes(parsed.easyLives)) meta.easyLives = parsed.easyLives;
-    meta.muted = parsed.muted === true;
+    if (typeof parsed.volume === "number" && Number.isFinite(parsed.volume)) {
+      meta.volume = Math.min(1, Math.max(0, parsed.volume));
+    } else if (parsed.muted === true) {
+      meta.volume = 0; // migrate the old mute toggle
+    }
     return meta;
   } catch {
     return meta;

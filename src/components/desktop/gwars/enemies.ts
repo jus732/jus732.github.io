@@ -17,7 +17,12 @@ export type EnemyTypeId =
   | "shard"
   | "snakeHead"
   | "snakeBody"
-  | "boss";
+  | "boss"
+  | "charger"
+  | "flock"
+  | "dodger"
+  | "orbiter"
+  | "warden";
 
 export type EnemyArchetype = {
   id: EnemyTypeId;
@@ -227,14 +232,14 @@ export const ARCHETYPES: Record<EnemyTypeId, EnemyArchetype> = {
   boss: {
     id: "boss",
     radius: 42,
-    hp: 90,
-    speed: 55,
+    hp: 120,
+    speed: 58,
     score: 1000,
     geoms: 30,
     color: "#ff3b3b",
     behavior(e, world, dt) {
       // Enrages as it takes damage.
-      const rage = 1 + (1 - e.hp / e.maxHp) * 0.8;
+      const rage = 1 + (1 - e.hp / e.maxHp);
       const base = e.speed;
       e.speed = base * rage;
       seekPlayer(e, world, dt, 2);
@@ -242,9 +247,9 @@ export const ARCHETYPES: Record<EnemyTypeId, EnemyArchetype> = {
       e.spin += (0.8 + rage) * dt;
       e.timer -= dt;
       if (e.timer <= 0) {
-        e.timer = 2.8;
+        e.timer = 2.4;
         if (e.age > 1.5) {
-          for (let i = 0; i < 2; i++) {
+          for (let i = 0; i < 3; i++) {
             const a = world.rand() * TAU;
             world.spawnChild(
               "shard",
@@ -254,6 +259,124 @@ export const ARCHETYPES: Record<EnemyTypeId, EnemyArchetype> = {
           }
         }
       }
+    },
+  },
+  charger: {
+    id: "charger",
+    radius: 12,
+    hp: 4,
+    speed: 100,
+    score: 110,
+    geoms: 3,
+    color: "#ff784d",
+    behavior(e, world, dt) {
+      // e.link doubles as a phase flag: 0 = approach/wind-up, 1 = dashing.
+      if (e.link === -1) e.link = 0;
+      if (e.link === 0) {
+        seekPlayer(e, world, dt, 1.6);
+        e.spin = Math.atan2(world.playerY - e.y, world.playerX - e.x);
+        e.timer -= dt;
+        if (e.timer <= 0) {
+          const dx = world.playerX - e.x;
+          const dy = world.playerY - e.y;
+          const d = Math.hypot(dx, dy) || 1;
+          e.vx = (dx / d) * e.speed * 4.5;
+          e.vy = (dy / d) * e.speed * 4.5;
+          e.link = 1;
+          e.timer = 0.5; // dash duration
+        }
+      } else {
+        e.timer -= dt;
+        e.vx *= Math.exp(-0.4 * dt);
+        e.vy *= Math.exp(-0.4 * dt);
+        if (e.timer <= 0) {
+          e.link = 0;
+          e.timer = 1.1 + world.rand() * 0.6; // wind-up before next dash
+        }
+        e.spin = Math.atan2(e.vy, e.vx);
+      }
+    },
+    onSpawn(e) {
+      e.timer = 1.0;
+    },
+  },
+  flock: {
+    id: "flock",
+    radius: 5,
+    hp: 1,
+    speed: 165,
+    score: 15,
+    geoms: 1,
+    color: "#7d8cff",
+    behavior(e, world, dt) {
+      // Murmuration feel without a neighbor scan: seek the player, but
+      // add a per-member swirling offset so the cloud roils as it flows.
+      const swirl = Math.sin(e.age * 3 + e.seed * 6.28) * 0.6;
+      seekPlayer(e, world, dt, 3.2, swirl);
+      e.spin = Math.atan2(e.vy, e.vx);
+    },
+  },
+  dodger: {
+    id: "dodger",
+    radius: 10,
+    hp: 2,
+    speed: 190,
+    score: 90,
+    geoms: 2,
+    color: "#4dffd6",
+    behavior(e, world, dt) {
+      seekPlayer(e, world, dt, 2.6);
+      // If a bullet is bearing down, juke perpendicular to its path.
+      const threat = world.bulletThreat(e.x, e.y, 70);
+      if (threat) {
+        const m = Math.hypot(threat.vx, threat.vy) || 1;
+        const px = -threat.vy / m;
+        const py = threat.vx / m;
+        const side = e.seed - 0.5 < 0 ? -1 : 1;
+        e.vx += px * side * e.speed * 3 * dt;
+        e.vy += py * side * e.speed * 3 * dt;
+      }
+      e.spin += 3 * dt;
+    },
+  },
+  orbiter: {
+    id: "orbiter",
+    radius: 9,
+    hp: 3,
+    speed: 175,
+    score: 95,
+    geoms: 2,
+    color: "#c98bff",
+    behavior(e, world, dt) {
+      const dx = e.x - world.playerX;
+      const dy = e.y - world.playerY;
+      const dist = Math.hypot(dx, dy) || 1;
+      // Desired orbit radius shrinks over time so it spirals inward.
+      const want = Math.max(60, 260 - e.age * 22);
+      const radial = dist - want; // >0 too far, <0 too close
+      const tx = -dy / dist;
+      const ty = dx / dist;
+      const inward = -dx / dist;
+      const iny = -dy / dist;
+      const tgtX = tx * e.speed + inward * radial * 2;
+      const tgtY = ty * e.speed + iny * radial * 2;
+      const blend = Math.min(1, 3 * dt);
+      e.vx += (tgtX - e.vx) * blend;
+      e.vy += (tgtY - e.vy) * blend;
+      e.spin += 5 * dt;
+    },
+  },
+  warden: {
+    id: "warden",
+    radius: 20,
+    hp: 22,
+    speed: 42,
+    score: 300,
+    geoms: 6,
+    color: "#6bd6a0",
+    behavior(e, world, dt) {
+      seekPlayer(e, world, dt, 1.2);
+      e.spin += 0.6 * dt;
     },
   },
 };
@@ -266,8 +389,13 @@ const INTRO: Partial<Record<EnemyTypeId, number>> = {
   seeker: 2,
   weaver: 3,
   spinner: 4,
+  charger: 5,
   splitter: 6,
   snakeHead: 7,
+  flock: 8,
+  dodger: 10,
+  orbiter: 12,
+  warden: 13,
 };
 
 /** Budget cost per spawn; a wave spends 10 + wave * 5 points. */
@@ -276,8 +404,13 @@ const COST: Partial<Record<EnemyTypeId, number>> = {
   seeker: 2,
   weaver: 2,
   spinner: 3,
+  charger: 3,
   splitter: 4,
   snakeHead: 6,
+  flock: 1,
+  dodger: 3,
+  orbiter: 3,
+  warden: 5,
 };
 
 /** How many arrive together when this type is picked. */
@@ -286,8 +419,13 @@ const CLUSTER: Partial<Record<EnemyTypeId, number>> = {
   seeker: 3,
   weaver: 2,
   spinner: 2,
+  charger: 2,
   splitter: 1,
   snakeHead: 1,
+  flock: 12,
+  dodger: 2,
+  orbiter: 3,
+  warden: 1,
 };
 
 /**
@@ -319,17 +457,21 @@ export function spawnPlanForWave(
   const available = (Object.keys(INTRO) as EnemyTypeId[]).filter(
     (type) => wave >= (INTRO[type] ?? Infinity)
   );
-  const pace = Math.max(0.4, 1 - wave * 0.025);
-  let budget = 10 + wave * 5;
+  const pace = Math.max(0.28, 1 - wave * 0.03);
+  // Superlinear budget: escalation accelerates so wave 10+ becomes a flood.
+  let budget = 10 + wave * 5 + Math.floor(wave * wave * 0.6);
+
+  // Later waves lean harder on higher-tier (later-introduced) archetypes.
+  const introBias = 0.25 + Math.min(0.9, wave * 0.05);
 
   while (budget > 0) {
-    // Weight recent introductions slightly so new threats show up.
+    // Weight recent introductions so new threats dominate as waves climb.
     let total = 0;
-    for (const type of available) total += 1 + (INTRO[type] ?? 1) * 0.25;
+    for (const type of available) total += 1 + (INTRO[type] ?? 1) * introBias;
     let roll = rand() * total;
     let type: EnemyTypeId = available[0];
     for (const candidate of available) {
-      roll -= 1 + (INTRO[candidate] ?? 1) * 0.25;
+      roll -= 1 + (INTRO[candidate] ?? 1) * introBias;
       if (roll <= 0) {
         type = candidate;
         break;
@@ -348,4 +490,39 @@ export function spawnPlanForWave(
   }
 
   return plan.sort((a, b) => a.at - b.at);
+}
+
+/* ----- Elite affixes ----- */
+
+export type AffixId = "veteran" | "swift" | "volatile" | "shielded" | "gilded";
+
+/** One-affix elite modifiers. `hpMul`/`speedMul` apply at spawn; the rest
+ *  are behavior flags read by the engine at hit/death time. Colors are the
+ *  outer-ring tint the renderer draws. */
+export const AFFIXES: Record<
+  AffixId,
+  { label: string; color: string; hpMul: number; speedMul: number }
+> = {
+  veteran: { label: "Veteran", color: "#ff5555", hpMul: 2.2, speedMul: 1 },
+  swift: { label: "Swift", color: "#5ad1ff", hpMul: 1, speedMul: 1.6 },
+  volatile: { label: "Volatile", color: "#ff9e4d", hpMul: 1.4, speedMul: 1 },
+  shielded: { label: "Shielded", color: "#8ab8ff", hpMul: 1, speedMul: 1 },
+  gilded: { label: "Gilded", color: "#ffd54d", hpMul: 1, speedMul: 1.1 },
+};
+
+const AFFIX_IDS: AffixId[] = ["veteran", "swift", "volatile", "shielded", "gilded"];
+
+/** Weighted affix pick (volatile/shielded rarer since they're spikier). */
+export function rollAffix(rand: () => number): AffixId {
+  const weights: Record<AffixId, number> = {
+    veteran: 30, swift: 30, gilded: 18, shielded: 12, volatile: 10,
+  };
+  let total = 0;
+  for (const id of AFFIX_IDS) total += weights[id];
+  let roll = rand() * total;
+  for (const id of AFFIX_IDS) {
+    roll -= weights[id];
+    if (roll <= 0) return id;
+  }
+  return "veteran";
 }

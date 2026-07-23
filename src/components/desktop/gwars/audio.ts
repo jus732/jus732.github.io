@@ -15,6 +15,11 @@ export type SoundName =
   | "playerHit"
   | "playerDeath"
   | "waveClear"
+  | "milestone"
+  | "crit"
+  | "chain"
+  | "graze"
+  | "streak"
   | "bomb"
   | "upgradePick"
   | "gameOver"
@@ -43,13 +48,20 @@ const THROTTLE: Partial<Record<SoundName, number>> = {
   enemyKill: 0.04,
   enemySpawn: 0.06,
   geomPickup: 0.05,
+  crit: 0.08,
+  chain: 0.07,
+  graze: 0.06,
 };
 
 class GwarsAudio {
-  muted = false;
+  /** Master volume 0..1; held here so it survives lazy ctx creation. */
+  private volume = 0.4;
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private lastAt: Partial<Record<SoundName, number>> = {};
+  /** Kill-chain pitch ladder: consecutive kills climb a scale. */
+  private killStreak = 0;
+  private lastKillAt = -Infinity;
 
   private ensure(): AudioContext | null {
     if (typeof window === "undefined" || !("AudioContext" in window)) return null;
@@ -60,7 +72,7 @@ class GwarsAudio {
         return null;
       }
       this.master = this.ctx.createGain();
-      this.master.gain.value = 0.4;
+      this.master.gain.value = this.volume;
       this.master.connect(this.ctx.destination);
     }
     if (this.ctx.state === "suspended") void this.ctx.resume().catch(() => {});
@@ -121,8 +133,16 @@ class GwarsAudio {
     return freq * (1 - jitter + Math.random() * jitter * 2);
   }
 
+  /** Set master volume (0..1); ramps briefly to avoid clicks mid-sound. */
+  setVolume(v: number) {
+    this.volume = Math.min(1, Math.max(0, v));
+    if (this.ctx && this.master) {
+      this.master.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.02);
+    }
+  }
+
   play(name: SoundName) {
-    if (this.muted) return;
+    if (this.volume <= 0) return;
     const ctx = this.ensure();
     if (!ctx) return;
 
@@ -160,6 +180,25 @@ class GwarsAudio {
       case "waveClear":
         // Short chime; the reveal sting that follows carries the drama.
         this.arp([784, 1047], { gap: 0.07, type: "triangle", dur: 0.12, vol: 0.13 });
+        break;
+      case "milestone":
+        // Bright rising triad — a small "you're cooking" flourish.
+        this.arp([659, 988, 1319], { gap: 0.05, type: "triangle", dur: 0.12, vol: 0.12 });
+        break;
+      case "crit":
+        this.tone({ freq: this.vary(1400, 0.05), to: 900, type: "square", dur: 0.05, vol: 0.08 });
+        break;
+      case "chain":
+        this.tone({ freq: this.vary(880, 0.08), to: 1760, type: "sawtooth", dur: 0.08, vol: 0.06 });
+        break;
+      case "graze":
+        // A whisper of a whoosh: audible in a lull, invisible in chaos.
+        this.tone({ freq: this.vary(1900, 0.08), to: 2400, type: "sine", dur: 0.04, vol: 0.05 });
+        break;
+      case "streak":
+        // Coin-cascade payoff for banking a long kill chain.
+        this.arp([988, 1319, 1568], { gap: 0.045, type: "triangle", dur: 0.08, vol: 0.12 });
+        this.thump(0, { cutoff: 2600, dur: 0.06, vol: 0.1 });
         break;
       case "bomb":
         this.thump(0, { cutoff: 300, dur: 0.4, vol: 0.55 });
@@ -204,6 +243,36 @@ class GwarsAudio {
         this.tone({ freq: 330, to: 560, type: "triangle", at: 0.07, dur: 0.06, vol: 0.1 });
         break;
     }
+  }
+
+  /** Kill sound with a rising pitch ladder and radius-scaled depth. */
+  playKill(radius: number) {
+    if (this.volume <= 0) return;
+    const ctx = this.ensure();
+    if (!ctx) return;
+    // Throttle like the old enemyKill so mass kills stay a texture.
+    const last = this.lastAt.enemyKill ?? -Infinity;
+    if (ctx.currentTime - last < (THROTTLE.enemyKill ?? 0)) return;
+    this.lastAt.enemyKill = ctx.currentTime;
+
+    // Reset the ladder after ~1s of quiet, else climb a pentatonic step.
+    if (ctx.currentTime - this.lastKillAt > 1) this.killStreak = 0;
+    else this.killStreak = Math.min(this.killStreak + 1, 12);
+    this.lastKillAt = ctx.currentTime;
+
+    const scale = [0, 2, 4, 7, 9]; // pentatonic semitone offsets
+    const step =
+      scale[this.killStreak % scale.length] +
+      12 * Math.floor(this.killStreak / scale.length);
+    const base = 300 + Math.max(0, 60 - radius * 1.4); // bigger enemy = deeper
+    const freq = base * Math.pow(2, step / 12);
+    this.tone({ freq: this.vary(freq, 0.03), to: freq * 0.4, type: "square", dur: 0.09, vol: 0.09 });
+    // Bigger bodies get a deeper thump.
+    this.thump(0, {
+      cutoff: 1600 - radius * 18,
+      dur: 0.05 + radius * 0.002,
+      vol: 0.08 + Math.min(0.12, radius * 0.004),
+    });
   }
 }
 
